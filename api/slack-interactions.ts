@@ -70,7 +70,7 @@ async function postEphemeral(responseUrl: string, text: string): Promise<void> {
   await fetch(responseUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ response_type: "ephemeral", text }),
+    body: JSON.stringify({ response_type: "ephemeral", replace_original: false, text }),
   }).catch((err) => console.error("response_url confirmation failed:", friendlyError(err)));
 }
 
