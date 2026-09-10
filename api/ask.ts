@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { waitUntil } from "@vercel/functions";
 import { createHash } from "node:crypto";
 import { verifySlackSignature, friendlyError } from "../src/shared/slackAuth.js";
 import { chunkText, toSlackMrkdwn, type Block } from "../src/shared/slackBlocks.js";
@@ -63,6 +64,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   res.status(200).json({ response_type: "ephemeral", text: pickAckPhrase(question) });
 
+  // The response above already went out — Vercel doesn't guarantee this invocation stays
+  // alive for the async work below unless it's wrapped in waitUntil().
+  waitUntil(answerAndRespond(question, responseUrl));
+}
+
+async function answerAndRespond(question: string, responseUrl: string): Promise<void> {
   try {
     const result = await answerQuestion(question);
     const blocks = buildAnswerBlocks(question, result.text, result.covered);
@@ -75,6 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await maybeStartSelfHeal({ question, respondViaResponseUrl: responseUrl });
     }
   } catch (err) {
+    console.error("ask handler error:", err);
     await fetch(responseUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },

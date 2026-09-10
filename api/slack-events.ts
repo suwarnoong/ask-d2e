@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, isAdmin } from "../src/shared/slackAuth.js";
 import { getThreadReplies, getDmHistory, getBotUserId, postMessage, stripMention } from "./_lib/slackApi.js";
 import { applyWizardTurn } from "../src/admin/wizard/addRepoWizard.js";
@@ -69,6 +70,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (classification === "retry" || classification === "self" || classification === "ignored") return;
 
   const event = payload.event!;
+  // Sending the response above does NOT guarantee Vercel keeps this invocation alive for the
+  // async work below — the instance can be frozen/recycled right after the response flushes.
+  // waitUntil() is the platform's primitive for "keep running this promise in the background
+  // even though the response already went out."
+  waitUntil(processEvent(classification, payload, event, botToken, botUserId));
+}
+
+async function processEvent(
+  classification: EventClassification,
+  payload: SlackEventPayload,
+  event: NonNullable<SlackEventPayload["event"]>,
+  botToken: string,
+  botUserId: string,
+): Promise<void> {
   console.log(`slack-events: classification=${classification} user=${event.user} channel=${event.channel} subtype=${(event as { subtype?: string }).subtype ?? "none"}`);
 
   try {

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, isAdmin, adminIds, friendlyError } from "../src/shared/slackAuth.js";
 import { postMessage, openDm } from "./_lib/slackApi.js";
 import { resolveRepoFromCitation, classifyRepoForQuestion } from "../src/kb/repoResolution.js";
@@ -60,6 +61,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const botToken = process.env.SLACK_BOT_TOKEN!;
   const route = routeInteraction(action?.action_id ?? "", isAdmin(userId));
 
+  // The response above already went out — Vercel doesn't guarantee this invocation stays
+  // alive for the async work below unless it's wrapped in waitUntil().
+  waitUntil(processInteraction(route, botToken, userId, question, answerText));
+}
+
+async function processInteraction(
+  route: "thanks" | "log-and-notify-admins" | "dispatch-fix",
+  botToken: string,
+  userId: string,
+  question: string,
+  answerText: string,
+): Promise<void> {
   try {
     if (route === "thanks") return;
 
