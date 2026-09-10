@@ -90,3 +90,18 @@ test("answerQuestion strips a markdown-bolded NO_KB_MATCH sentinel (observed pro
   assert.ok(!result.text.includes("NO_KB_MATCH"));
   assert.ok(result.text.startsWith("The knowledge base"));
 });
+
+test("answerQuestion strips NO_KB_MATCH even when the model doesn't lead with it", async () => {
+  const stubClient = {
+    messages: {
+      create: async () => ({
+        content: [{ type: "text", text: "Based on the knowledge base: NO_KB_MATCH The docs don't cover HANA in general, but here's what's there about D2E's use of it." }],
+      }),
+    },
+  };
+  const result = await answerQuestion("tell me about HANA database", [], stubClient as any);
+  assert.equal(result.covered, false);
+  assert.ok(!result.text.includes("NO_KB_MATCH"));
+  assert.ok(result.text.includes("Based on the knowledge base:"));
+  assert.ok(result.text.includes("The docs don't cover HANA"));
+});
