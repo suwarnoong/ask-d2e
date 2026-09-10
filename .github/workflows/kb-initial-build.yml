@@ -1,0 +1,64 @@
+name: KB Initial Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_name:
+        required: true
+      source_repo:
+        required: true
+      prompt_spec_json:
+        required: true
+      cadence:
+        required: true
+      created_by:
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  initial-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ask-d2e
+        uses: actions/checkout@v4
+
+      - name: Checkout ask-d2e-kb
+        uses: actions/checkout@v4
+        with:
+          repository: suwarnoong/ask-d2e-kb
+          token: ${{ secrets.KB_REPO_TOKEN }}
+          path: kb
+
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repo }}
+          token: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          path: src-checkout
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run initial build
+        run: npm run kb-initial-build
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          KB_REPO_TOKEN: ${{ secrets.KB_REPO_TOKEN }}
+          SOURCE_REPOS_TOKEN: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          KB_ROOT: ${{ github.workspace }}/kb
+          SOURCE_DIR: ${{ github.workspace }}/src-checkout
+          REPO_NAME: ${{ inputs.repo_name }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          PROMPT_SPEC_JSON: ${{ inputs.prompt_spec_json }}
+          CADENCE: ${{ inputs.cadence }}
+          CREATED_BY: ${{ inputs.created_by }}
+          CLAUDE_TIMEOUT_MS: "900000"
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
