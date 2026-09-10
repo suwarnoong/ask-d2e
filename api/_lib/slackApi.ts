@@ -65,23 +65,6 @@ export async function postMessage(opts: {
     text: opts.text,
     blocks: opts.blocks,
     thread_ts: opts.thread_ts,
-    as_user: true,
-  });
-}
-
-export async function updateMessage(opts: {
-  botToken: string;
-  channel: string;
-  ts: string;
-  text: string;
-  blocks?: unknown[];
-}): Promise<void> {
-  await slackApiCall("chat.update", opts.botToken, {
-    channel: opts.channel,
-    ts: opts.ts,
-    text: opts.text,
-    blocks: opts.blocks,
-    as_user: true,
   });
 }
 
