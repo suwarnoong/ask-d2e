@@ -1,0 +1,86 @@
+name: KB Correct
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        required: true
+      repo_name:
+        required: true
+      question:
+        required: true
+      answer:
+        required: false
+        default: ""
+      asked_by:
+        required: false
+        default: ""
+      slack_channel:
+        required: false
+        default: ""
+      slack_thread_ts:
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ask-d2e
+        uses: actions/checkout@v4
+
+      - name: Checkout ask-d2e-kb
+        uses: actions/checkout@v4
+        with:
+          repository: suwarnoong/ask-d2e-kb
+          token: ${{ secrets.KB_REPO_TOKEN }}
+          path: kb
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Resolve source repo and re-verify repo_name
+        id: resolve
+        run: |
+          SOURCE_REPO=$(node -e "
+            const entries = require('./kb/repos.json');
+            const entry = entries.find(e => e.name === process.env.REPO_NAME_INPUT);
+            if (!entry) { console.error('repo_name not found in registry: ' + process.env.REPO_NAME_INPUT); process.exit(1); }
+            console.log(entry.sourceRepo);
+          ")
+          echo "source_repo=$SOURCE_REPO" >> "$GITHUB_OUTPUT"
+        env:
+          REPO_NAME_INPUT: ${{ inputs.repo_name }}
+
+      - name: Clone the resolved source repo
+        run: git clone --depth 1 "https://x-access-token:${SOURCE_REPOS_TOKEN}@github.com/${SOURCE_REPO}.git" src-checkout
+        env:
+          SOURCE_REPOS_TOKEN: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          SOURCE_REPO: ${{ steps.resolve.outputs.source_repo }}
+
+      - run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run correct
+        run: npm run kb-correct
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          KB_REPO_TOKEN: ${{ secrets.KB_REPO_TOKEN }}
+          SOURCE_REPOS_TOKEN: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          KB_ROOT: ${{ github.workspace }}/kb
+          SOURCE_DIR: ${{ github.workspace }}/src-checkout
+          MODE: ${{ inputs.mode }}
+          REPO_NAME: ${{ inputs.repo_name }}
+          QUESTION: ${{ inputs.question }}
+          ANSWER: ${{ inputs.answer }}
+          ASKED_BY: ${{ inputs.asked_by }}
+          SLACK_CHANNEL: ${{ inputs.slack_channel }}
+          SLACK_THREAD_TS: ${{ inputs.slack_thread_ts }}
+          CLAUDE_TIMEOUT_MS: "600000"
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
