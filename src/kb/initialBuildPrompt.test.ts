@@ -29,7 +29,7 @@ test("buildFileTreeOverview omits the truncation note when under the cap", () =>
 });
 
 test("buildInitialBuildPrompt includes the promptSpec fields verbatim", () => {
-  const prompt = buildInitialBuildPrompt("acme/widgets", promptSpec, ["src/a.ts"], "# Widgets\nA repo.", 1);
+  const prompt = buildInitialBuildPrompt("acme/widgets", "acme-widgets", promptSpec, ["src/a.ts"], "# Widgets\nA repo.", 1);
   assert.ok(prompt.includes("internal engineers"));
   assert.ok(prompt.includes("how does auth work?"));
   assert.ok(prompt.includes("the API layer"));
@@ -37,9 +37,14 @@ test("buildInitialBuildPrompt includes the promptSpec fields verbatim", () => {
 });
 
 test("buildInitialBuildPrompt includes the readme content and category-folder + output-shape instructions", () => {
-  const prompt = buildInitialBuildPrompt("acme/widgets", promptSpec, ["src/a.ts"], "# Widgets\nA repo.", 1);
+  const prompt = buildInitialBuildPrompt("acme/widgets", "acme-widgets", promptSpec, ["src/a.ts"], "# Widgets\nA repo.", 1);
   assert.ok(prompt.includes("# Widgets\nA repo."));
   assert.ok(/00-overview/.test(prompt));
   assert.ok(/summary/.test(prompt) && /changes/.test(prompt));
   assert.ok(/do not attempt to read every\s+file/i.test(prompt));
+});
+
+test("buildInitialBuildPrompt requires every path to be prefixed with repos/<name>/knowledge-base/", () => {
+  const prompt = buildInitialBuildPrompt("acme/widgets", "acme-widgets", promptSpec, ["src/a.ts"], "# Widgets\nA repo.", 1);
+  assert.ok(prompt.includes("repos/acme-widgets/knowledge-base/"));
 });

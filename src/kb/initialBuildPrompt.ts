@@ -35,12 +35,14 @@ export function buildFileTreeOverview(fileList: string[], cap = 500, totalFileCo
 
 export function buildInitialBuildPrompt(
   sourceRepo: string,
+  repoName: string,
   promptSpec: PromptSpec,
   fileList: string[],
   readmes: string,
   totalFileCount: number,
 ): string {
   const overview = buildFileTreeOverview(fileList, fileList.length, totalFileCount);
+  const pathPrefix = `repos/${repoName}/knowledge-base/`;
   return `
 You maintain a Markdown knowledge base documenting ${sourceRepo}. Build the initial knowledge base
 from scratch by exploring the real source, checked out in your working directory.
@@ -64,6 +66,10 @@ file — use the file-tree overview and README to decide where to look first.
 Write pages under a fixed category-folder convention: 00-overview/, then numbered category folders
 (01-..., 02-..., etc.) grouping related topics. Keep page count bounded — do not create a separate
 page per file.
+
+CRITICAL: every "path" in your response MUST start with the exact prefix "${pathPrefix}" —
+for example "${pathPrefix}00-overview/intro.md" or "${pathPrefix}03-cloud-functions/query-service.md".
+Do NOT write bare paths like "00-overview/intro.md" — they will be rejected.
 
 Respond with a single JSON object shaped as:
 { "summary": string, "changes": [ { "path": string, "action": "create", "rationale": string, "source_prs": [], "content": string } ] }

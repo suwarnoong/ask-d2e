@@ -1,9 +1,15 @@
-const OUTPUT_SHAPE_INSTRUCTION = `
+function outputShapeInstruction(repoName: string): string {
+  const pathPrefix = `repos/${repoName}/knowledge-base/`;
+  return `
+CRITICAL: every "path" in your response MUST start with the exact prefix "${pathPrefix}" —
+for example "${pathPrefix}00-overview/intro.md". Do NOT write bare paths — they will be rejected.
+
 Respond with a single JSON object shaped as:
 { "summary": string, "changes": [ { "path": string, "action": "update"|"create", "rationale": string, "source_prs": [], "content": string } ] }
 `.trim();
+}
 
-function buildFixPrompt(sourceRepo: string, question: string, answer: string): string {
+function buildFixPrompt(sourceRepo: string, repoName: string, question: string, answer: string): string {
   return `
 You maintain a Markdown knowledge base documenting ${sourceRepo}. A user asked ask-d2e a
 question; the bot answered FROM THE KB; the user marked the answer WRONG or incomplete.
@@ -18,11 +24,11 @@ each file's structure/tone; only correct what the code contradicts. If, after ch
 original answer was actually correct, return an empty changes array explaining why in the summary
 — do not invent edits.
 
-${OUTPUT_SHAPE_INSTRUCTION}
+${outputShapeInstruction(repoName)}
 `.trim();
 }
 
-function buildGapFillPrompt(sourceRepo: string, question: string, fileTreeOverview: string, readmes: string): string {
+function buildGapFillPrompt(sourceRepo: string, repoName: string, question: string, fileTreeOverview: string, readmes: string): string {
   return `
 You maintain a Markdown knowledge base documenting ${sourceRepo}. A user asked ask-d2e a question
 the current KB doesn't cover.
@@ -42,18 +48,19 @@ page(s) under the existing category convention. If the question turns out to be 
 this repo, or you can't find enough to write a grounded page, return an empty changes array
 explaining why — do not invent a page just to have something to show.
 
-${OUTPUT_SHAPE_INSTRUCTION}
+${outputShapeInstruction(repoName)}
 `.trim();
 }
 
 export function buildCorrectionPrompt(
   mode: "fix" | "gap-fill",
   sourceRepo: string,
+  repoName: string,
   question: string,
   answer: string,
   fileTreeOverview?: string,
   readmes?: string,
 ): string {
-  if (mode === "fix") return buildFixPrompt(sourceRepo, question, answer);
-  return buildGapFillPrompt(sourceRepo, question, fileTreeOverview ?? "", readmes ?? "");
+  if (mode === "fix") return buildFixPrompt(sourceRepo, repoName, question, answer);
+  return buildGapFillPrompt(sourceRepo, repoName, question, fileTreeOverview ?? "", readmes ?? "");
 }

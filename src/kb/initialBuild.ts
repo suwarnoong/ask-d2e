@@ -62,7 +62,7 @@ export async function runInitialBuild(
   const allFiles = listSourceFiles(config.sourceDir);
   const readmes = readReadmes(config.sourceDir);
   const totalFileCount = allFiles.length;
-  const prompt = buildInitialBuildPrompt(config.sourceRepo, promptSpec, allFiles, readmes, totalFileCount);
+  const prompt = buildInitialBuildPrompt(config.sourceRepo, config.repoName, promptSpec, allFiles, readmes, totalFileCount);
 
   const rawResult = await callClaude(prompt, config, { cwd: config.sourceDir, allowedTools: ["Read", "Grep", "Glob"] });
   const plan = parseKbResponse(rawResult);

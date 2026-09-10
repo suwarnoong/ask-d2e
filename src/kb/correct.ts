@@ -82,12 +82,12 @@ export async function runCorrect(config: CorrectConfig, deps: Partial<CorrectDep
 
   let prompt: string;
   if (config.mode === "fix") {
-    prompt = buildCorrectionPrompt("fix", entry.sourceRepo, config.question, config.answer);
+    prompt = buildCorrectionPrompt("fix", entry.sourceRepo, config.repoName, config.question, config.answer);
   } else {
     const files = listSourceFiles(config.sourceDir);
     const overview = buildFileTreeOverview(files, files.length, files.length);
     const readmes = readReadmes(config.sourceDir);
-    prompt = buildCorrectionPrompt("gap-fill", entry.sourceRepo, config.question, config.answer, overview, readmes);
+    prompt = buildCorrectionPrompt("gap-fill", entry.sourceRepo, config.repoName, config.question, config.answer, overview, readmes);
   }
 
   const rawResult = await callClaude(prompt, config, { cwd: config.sourceDir, allowedTools: ["Read", "Grep", "Glob"] });
