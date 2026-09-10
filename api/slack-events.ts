@@ -69,13 +69,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (classification === "retry" || classification === "self" || classification === "ignored") return;
 
   const event = payload.event!;
+  console.log(`slack-events: classification=${classification} user=${event.user} channel=${event.channel} subtype=${(event as { subtype?: string }).subtype ?? "none"}`);
 
   try {
     if (classification === "wizard_turn") {
-      if (!isAdmin(event.user)) return;
+      if (!isAdmin(event.user)) {
+        console.log(`wizard_turn ignored: user "${event.user}" is not in KB_FEEDBACK_ADMIN_IDS`);
+        return;
+      }
       const history = await getDmHistory(botToken, event.channel!);
+      console.log(`wizard_turn: fetched ${history.length} DM history message(s)`);
       const result = await applyWizardTurn(history, event.text ?? "", event.user!);
-      if (!result) return;
+      if (!result) {
+        console.log("wizard_turn: applyWizardTurn found no active state — nothing to reply to");
+        return;
+      }
       await postMessage({ botToken, channel: event.channel!, text: result.reply });
       if (result.dispatch) {
         await fetch("https://api.github.com/repos/suwarnoong/ask-d2e/actions/workflows/kb-initial-build.yml/dispatches", {
@@ -110,6 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
   } catch (err) {
+    console.error("slack-events handler error:", err);
     const event2 = payload.event;
     if (event2?.channel) {
       await postMessage({
