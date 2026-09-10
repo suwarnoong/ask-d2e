@@ -101,6 +101,35 @@ test("applyWizardTurn advances a freeform step and asks the next question", asyn
   assert.equal(result!.dispatch, null);
 });
 
+test("applyWizardTurn finds the LATEST bot message in a newest-first history (regression: Slack returns conversations.history newest-first, not oldest-first)", async () => {
+  const firstEncoded = encodeState("What audience is this for?", {
+    active: true,
+    step: "audience",
+    sourceRepo: "acme/widgets",
+    answers: {},
+  });
+  const secondEncoded = encodeState("Give example questions.", {
+    active: true,
+    step: "exampleQuestions",
+    sourceRepo: "acme/widgets",
+    answers: { audience: "internal engineers" },
+  });
+  // Newest-first order, matching Slack's real conversations.history response shape:
+  // index 0 is the most recent message (the "exampleQuestions" question), the
+  // "audience" question came earlier and sits later in the array.
+  const history: SlackHistoryMessage[] = [
+    { ts: "4", text: "internal engineers", user: "U1" },
+    { ts: "3", text: secondEncoded, bot_id: "B1" },
+    { ts: "2", text: "internal engineers", user: "U1" },
+    { ts: "1", text: firstEncoded, bot_id: "B1" },
+  ];
+  const result = await applyWizardTurn(history, "how does auth work?", "U1");
+  assert.ok(result);
+  assert.equal(result!.state.answers.exampleQuestions, "how does auth work?");
+  assert.equal(result!.state.answers.audience, "internal engineers");
+  assert.equal(result!.state.step, "focusAreas");
+});
+
 test("applyWizardTurn auto-crafts after the cadence step and lands on confirmed", async () => {
   const encoded = encodeState("daily or weekly?", {
     active: true,

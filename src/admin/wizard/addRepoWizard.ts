@@ -90,7 +90,9 @@ export function prefillFromEntry(entry: RegistryEntry): Record<string, string> {
 }
 
 function findLatestState(history: SlackHistoryMessage[]): WizardState | null {
-  for (let i = history.length - 1; i >= 0; i--) {
+  // Slack's conversations.history returns messages newest-first, so the latest bot
+  // message is found by scanning forward from index 0, not backward from the end.
+  for (let i = 0; i < history.length; i++) {
     const msg = history[i];
     if (!msg.bot_id) continue;
     return decodeState(msg.text);
