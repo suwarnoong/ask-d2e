@@ -6,16 +6,119 @@ import { resolveRepoFromCitation, classifyRepoForQuestion } from "../src/kb/repo
 import { loadRegistry } from "../src/kb/registry.js";
 import { buildCorrectDispatchPayload } from "./_lib/selfHeal.js";
 import { readRawBody } from "./_lib/rawBody.js";
+import type { Block } from "../src/shared/slackBlocks.js";
 
 export const config = { api: { bodyParser: false } };
 
-export function routeInteraction(actionId: string, isAdminUser: boolean): "thanks" | "log-and-notify-admins" | "dispatch-fix" {
-  if (actionId === "feedback_up") return "thanks";
-  return isAdminUser ? "dispatch-fix" : "log-and-notify-admins";
+export type InteractionRoute = "thanks" | "notify-admin" | "admin-confirm" | "admin-dismiss" | "ignored";
+
+export function routeInteraction(actionId: string): InteractionRoute {
+  switch (actionId) {
+    case "feedback_up":
+      return "thanks";
+    case "feedback_down":
+      return "notify-admin";
+    case "admin_fix_confirm":
+      return "admin-confirm";
+    case "admin_fix_dismiss":
+      return "admin-dismiss";
+    default:
+      return "ignored";
+  }
 }
 
-async function dispatchCorrectFix(repoName: string, question: string, answer: string): Promise<void> {
-  const payload = buildCorrectDispatchPayload("fix", repoName, question, answer, "");
+export interface FixContext {
+  repoName: string;
+  question: string;
+  answer: string;
+  channelId: string;
+  messageTs: string;
+}
+
+// Truncated well under Slack's ~2000-char button value limit — buildCorrectDispatchPayload
+// caps question/answer to 1024 chars for the GitHub Actions dispatch anyway.
+export function packFixContext(ctx: FixContext): string {
+  return JSON.stringify({
+    repoName: ctx.repoName,
+    question: ctx.question.slice(0, 300),
+    answer: ctx.answer.slice(0, 800),
+    channelId: ctx.channelId,
+    messageTs: ctx.messageTs,
+  });
+}
+
+export function unpackFixContext(value: string): FixContext | null {
+  try {
+    const parsed = JSON.parse(value);
+    if (
+      typeof parsed.repoName === "string" &&
+      typeof parsed.question === "string" &&
+      typeof parsed.answer === "string" &&
+      typeof parsed.channelId === "string" &&
+      typeof parsed.messageTs === "string"
+    ) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function postEphemeral(responseUrl: string, text: string): Promise<void> {
+  if (!responseUrl) return;
+  await fetch(responseUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ response_type: "ephemeral", text }),
+  }).catch((err) => console.error("response_url confirmation failed:", friendlyError(err)));
+}
+
+async function notifyAdminsOfFlag(
+  botToken: string,
+  userId: string,
+  question: string,
+  answerText: string,
+  repoName: string | null,
+  channelId: string,
+  messageTs: string,
+): Promise<void> {
+  const preview = answerText.length > 500 ? `${answerText.slice(0, 500)}...` : answerText;
+  const blocks: Block[] = [
+    { type: "section", text: { type: "mrkdwn", text: `*Flagged by <@${userId}>*\n*Q:* ${question}\n*A:* ${preview}` } },
+  ];
+  if (repoName) {
+    const value = packFixContext({ repoName, question, answer: answerText, channelId, messageTs });
+    blocks.push({
+      type: "actions",
+      elements: [
+        { type: "button", text: { type: "plain_text", text: "🔄 Refresh KB & Answer" }, action_id: "admin_fix_confirm", value, style: "primary" },
+        { type: "button", text: { type: "plain_text", text: "✖️ Dismiss" }, action_id: "admin_fix_dismiss", value: "" },
+      ],
+    });
+  } else {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "_Couldn't determine which configured repo this belongs to — may need manual follow-up._" },
+    });
+  }
+  await Promise.allSettled(
+    [...adminIds()].map(async (adminId) => {
+      const channel = await openDm(botToken, adminId);
+      await postMessage({ botToken, channel, text: `Flagged by <@${userId}>: "${question}"`, blocks });
+    }),
+  );
+}
+
+async function dispatchCorrectFix(
+  repoName: string,
+  question: string,
+  answer: string,
+  askedBy: string,
+  slackChannel: string,
+  slackThreadTs: string,
+): Promise<void> {
+  const payload = buildCorrectDispatchPayload("fix", repoName, question, answer, askedBy, slackChannel, slackThreadTs);
   const res = await fetch(`https://api.github.com/repos/suwarnoong/ask-d2e/actions/workflows/kb-correct.yml/dispatches`, {
     method: "POST",
     headers: {
@@ -49,55 +152,79 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const action = payload.actions?.[0];
+  const actionId = (action?.action_id as string) ?? "";
   const userId = payload.user?.id ?? "";
-  const question = (action?.value as string) ?? "";
+  const actionValue = (action?.value as string) ?? "";
+  const question = actionValue;
   const answerText = (payload.message?.blocks ?? [])
     .filter((b: { type: string }) => b.type === "section")
     .map((b: { text?: { text?: string } }) => b.text?.text ?? "")
     .join("\n");
+  const responseUrl = (payload.response_url as string) ?? "";
+  const channelId = payload.channel?.id ?? "";
+  const messageTs = payload.message?.ts ?? "";
 
   res.status(200).send("");
 
   const botToken = process.env.SLACK_BOT_TOKEN!;
-  const route = routeInteraction(action?.action_id ?? "", isAdmin(userId));
+  const route = routeInteraction(actionId);
 
   // The response above already went out — Vercel doesn't guarantee this invocation stays
   // alive for the async work below unless it's wrapped in waitUntil().
-  waitUntil(processInteraction(route, botToken, userId, question, answerText));
+  waitUntil(
+    processInteraction(route, botToken, userId, isAdmin(userId), question, answerText, responseUrl, channelId, messageTs, actionValue),
+  );
 }
 
 async function processInteraction(
-  route: "thanks" | "log-and-notify-admins" | "dispatch-fix",
+  route: InteractionRoute,
   botToken: string,
   userId: string,
+  isAdminUser: boolean,
   question: string,
   answerText: string,
+  responseUrl: string,
+  channelId: string,
+  messageTs: string,
+  actionValue: string,
 ): Promise<void> {
   try {
-    if (route === "thanks") return;
+    if (route === "thanks") {
+      await postEphemeral(responseUrl, "✅ Thanks for the feedback!");
+      return;
+    }
 
-    if (route === "log-and-notify-admins") {
+    if (route === "notify-admin") {
+      await postEphemeral(responseUrl, "👀 Thanks — flagged for the team to review.");
       console.log(`KB feedback (down) from ${userId}: ${question}`);
-      await Promise.allSettled(
-        [...adminIds()].map(async (adminId) => {
-          const channel = await openDm(botToken, adminId);
-          await postMessage({ botToken, channel, text: `Flagged as wrong by <@${userId}>: "${question}"\nAnswer: ${answerText}` });
-        }),
-      );
+      const registry = loadRegistry(process.env.KB_ROOT ?? process.cwd() + "/knowledge-base");
+      let repoName = resolveRepoFromCitation(answerText);
+      if (!repoName) {
+        repoName = await classifyRepoForQuestion(question, registry);
+      }
+      await notifyAdminsOfFlag(botToken, userId, question, answerText, repoName, channelId, messageTs);
       return;
     }
 
-    // route === "dispatch-fix"
-    const registry = loadRegistry(process.env.KB_ROOT ?? "./kb");
-    let repoName = resolveRepoFromCitation(answerText);
-    if (!repoName) {
-      repoName = await classifyRepoForQuestion(question, registry);
-    }
-    if (!repoName) {
-      console.log(`Could not resolve a repo for flagged answer: "${question}"`);
+    if (route === "admin-dismiss") {
+      await postEphemeral(responseUrl, "Dismissed.");
       return;
     }
-    await dispatchCorrectFix(repoName, question, answerText);
+
+    if (route === "admin-confirm") {
+      if (!isAdminUser) {
+        await postEphemeral(responseUrl, "Only admins can do that.");
+        return;
+      }
+      const ctx = unpackFixContext(actionValue);
+      if (!ctx) {
+        await postEphemeral(responseUrl, "Something went wrong reading that action — try again.");
+        return;
+      }
+      await dispatchCorrectFix(ctx.repoName, ctx.question, ctx.answer, userId, ctx.channelId, ctx.messageTs);
+      await postEphemeral(responseUrl, "✅ Dispatched — I'll post the result in the original thread once it's done.");
+      return;
+    }
   } catch (err) {
     console.error(friendlyError(err));
   }

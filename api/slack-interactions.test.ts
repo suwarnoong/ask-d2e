@@ -1,16 +1,43 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeInteraction } from "./slack-interactions.js";
+import { routeInteraction, packFixContext, unpackFixContext } from "./slack-interactions.js";
 
-test("thumbs up always routes to thanks", () => {
-  assert.equal(routeInteraction("feedback_up", true), "thanks");
-  assert.equal(routeInteraction("feedback_up", false), "thanks");
+test("thumbs up routes to thanks", () => {
+  assert.equal(routeInteraction("feedback_up"), "thanks");
 });
 
-test("thumbs down from a non-admin routes to log-and-notify-admins", () => {
-  assert.equal(routeInteraction("feedback_down", false), "log-and-notify-admins");
+test("thumbs down routes to notify-admin regardless of clicker", () => {
+  assert.equal(routeInteraction("feedback_down"), "notify-admin");
 });
 
-test("thumbs down from an admin routes to dispatch-fix", () => {
-  assert.equal(routeInteraction("feedback_down", true), "dispatch-fix");
+test("admin_fix_confirm routes to admin-confirm", () => {
+  assert.equal(routeInteraction("admin_fix_confirm"), "admin-confirm");
+});
+
+test("admin_fix_dismiss routes to admin-dismiss", () => {
+  assert.equal(routeInteraction("admin_fix_dismiss"), "admin-dismiss");
+});
+
+test("unknown action_id routes to ignored", () => {
+  assert.equal(routeInteraction("something_else"), "ignored");
+});
+
+test("packFixContext/unpackFixContext round-trips", () => {
+  const ctx = { repoName: "acme", question: "how does X work?", answer: "X works by...", channelId: "C1", messageTs: "123.456" };
+  const packed = packFixContext(ctx);
+  assert.deepEqual(unpackFixContext(packed), ctx);
+});
+
+test("packFixContext truncates long question/answer well under Slack's button value limit", () => {
+  const ctx = { repoName: "acme", question: "q".repeat(5000), answer: "a".repeat(5000), channelId: "C1", messageTs: "123.456" };
+  const packed = packFixContext(ctx);
+  assert.ok(packed.length < 2000);
+});
+
+test("unpackFixContext returns null for malformed JSON", () => {
+  assert.equal(unpackFixContext("not json"), null);
+});
+
+test("unpackFixContext returns null when required fields are missing", () => {
+  assert.equal(unpackFixContext(JSON.stringify({ repoName: "acme" })), null);
 });
