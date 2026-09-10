@@ -27,7 +27,7 @@ export function cloneKbBundle({ url, branch, targetDir }) {
 }
 
 function main() {
-  const kbRepo = required("KB_REPO");
+  const kbRepo = optional("KB_REPO", "suwarnoong/ask-d2e-kb");
   const kbRepoToken = required("KB_REPO_TOKEN");
   const kbBranch = optional("KB_BRANCH", "main");
   const url = buildCloneUrl(kbRepo, kbRepoToken);
