@@ -1,0 +1,40 @@
+display_information:
+  name: ask-d2e
+  description: Ask questions about your team's repos, right in Slack — grounded, cited, self-improving.
+  background_color: "#000080"
+features:
+  bot_user:
+    display_name: ask-d2e
+    always_online: true
+  slash_commands:
+    - command: /ask
+      url: https://ask-d2e.vercel.app/api/ask
+      description: Ask the knowledge base
+      usage_hint: how does the query engine work?
+      should_escape: false
+    - command: /ask-admin
+      url: https://ask-d2e.vercel.app/api/ask-admin
+      description: Admin actions (add-repo, set-cadence, edit-repo)
+      usage_hint: add-repo owner/name
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - app_mentions:read
+      - chat:write
+      - im:write
+      - im:history
+      - channels:history
+settings:
+  event_subscriptions:
+    request_url: https://ask-d2e.vercel.app/api/slack-events
+    bot_events:
+      - app_mention
+      - message.im
+  interactivity:
+    is_enabled: true
+    request_url: https://ask-d2e.vercel.app/api/slack-interactions
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
