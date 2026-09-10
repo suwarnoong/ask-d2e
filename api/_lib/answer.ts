@@ -32,6 +32,9 @@ export function renderKbForPrompt(files: KbFile[], registry: RegistryEntry[], bu
 
 export const CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 export const NO_KB_MATCH = "NO_KB_MATCH";
+// Matches the sentinel even when the model wraps it in markdown bold, leading
+// whitespace, or a trailing colon — observed in production as "**NO_KB_MATCH**".
+const NO_KB_MATCH_PREFIX_RE = /^\s*\**NO_KB_MATCH\**:?\s*\n?/i;
 
 const INSTRUCTIONS = `
 You are ask-d2e, a Q&A assistant. Answer using ONLY the knowledge base provided.
@@ -113,7 +116,8 @@ export async function answerQuestion(
   });
 
   const rawText = response.content.find((b) => b.type === "text")?.text ?? "";
-  const covered = !rawText.startsWith(NO_KB_MATCH);
-  const text = covered ? rawText : rawText.slice(NO_KB_MATCH.length).replace(/^\n+/, "");
+  const match = rawText.match(NO_KB_MATCH_PREFIX_RE);
+  const covered = !match;
+  const text = covered ? rawText : rawText.slice(match[0].length);
   return { text, covered };
 }

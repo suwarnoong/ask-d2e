@@ -76,3 +76,17 @@ test("answerQuestion strips the NO_KB_MATCH sentinel and reports covered=false",
   assert.equal(result.covered, false);
   assert.equal(result.text.trim(), "Sorry, nothing covers that.");
 });
+
+test("answerQuestion strips a markdown-bolded NO_KB_MATCH sentinel (observed production format)", async () => {
+  const stubClient = {
+    messages: {
+      create: async () => ({
+        content: [{ type: "text", text: "**NO_KB_MATCH\n\nThe knowledge base doesn't contain information about HANA databases in general..." }],
+      }),
+    },
+  };
+  const result = await answerQuestion("tell me about HANA database", [], stubClient as any);
+  assert.equal(result.covered, false);
+  assert.ok(!result.text.includes("NO_KB_MATCH"));
+  assert.ok(result.text.startsWith("The knowledge base"));
+});
