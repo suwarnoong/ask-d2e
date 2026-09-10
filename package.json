@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
-    "test": "tsx --test $(find src api -name '*.test.ts' 2>/dev/null)",
+    "test": "tsx --test $(find src api scripts \\( -name '*.test.ts' -o -name '*.test.mjs' \\) 2>/dev/null)",
     "kb-initial-build": "tsx src/kb/initialBuild.ts",
     "kb-correct": "tsx src/kb/correct.ts"
   },
