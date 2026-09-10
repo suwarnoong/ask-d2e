@@ -6,7 +6,7 @@ import { parseKbResponse } from "./responseParsing.js";
 import { applyKbChanges } from "./kbFiles.js";
 import { commitAndPush } from "./gitOps.js";
 import { loadRegistry, withRegistryRetry } from "./registry.js";
-import { postThreadReply, postBlocks } from "../shared/slackBlocks.js";
+import { postThreadReply, postBlocks, toSlackMrkdwn, chunkText, type Block } from "../shared/slackBlocks.js";
 import { parseWebhooks } from "../shared/config.js";
 
 export interface CorrectConfig extends ClaudeAuth {
@@ -51,6 +51,11 @@ export interface CorrectDeps {
 }
 
 async function defaultNotify(config: CorrectConfig, text: string): Promise<void> {
+  // plan.summary is Claude-generated GitHub markdown — convert to Slack mrkdwn (and chunk,
+  // in case it's long) so it renders properly instead of showing raw **bold** / # headings.
+  const mrkdwn = toSlackMrkdwn(text);
+  const blocks: Block[] = chunkText(mrkdwn).map((c) => ({ type: "section", text: { type: "mrkdwn", text: c } }));
+
   const botToken = process.env.SLACK_BOT_TOKEN;
   if (botToken && config.slackChannel && config.slackThreadTs) {
     try {
@@ -58,7 +63,7 @@ async function defaultNotify(config: CorrectConfig, text: string): Promise<void>
         botToken,
         channel: config.slackChannel,
         thread_ts: config.slackThreadTs,
-        blocks: [{ type: "section", text: { type: "mrkdwn", text } }],
+        blocks,
         fallbackText: text,
       });
       return;
@@ -68,7 +73,7 @@ async function defaultNotify(config: CorrectConfig, text: string): Promise<void>
   }
   const raw = process.env.SLACK_WEBHOOK_URLS;
   if (raw) {
-    await postBlocks(parseWebhooks(raw), [{ type: "section", text: { type: "mrkdwn", text } }], text).catch(() => {});
+    await postBlocks(parseWebhooks(raw), blocks, text).catch(() => {});
   }
 }
 
