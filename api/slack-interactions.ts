@@ -83,11 +83,12 @@ async function postEphemeral(responseUrl: string, text: string): Promise<void> {
   }).catch((err) => console.error("response_url confirmation failed:", friendlyError(err)));
 }
 
-// Confirms a click in the nicest way available: if the message is bot-owned (payload.message
-// was present — chat.postMessage-origin, e.g. @mention answers and admin DMs), edit it in place
-// via chat.update, replacing the buttons with a small confirmation line. If it's not (messages
-// posted via response_url, e.g. /ask answers, don't expose payload.message on later
-// interactions — there's nothing to safely rebuild from), fall back to an ephemeral reply.
+// Confirms a click in the nicest way available. If the message is bot-owned (@mention answers,
+// admin DMs — real chat.postMessage messages), edit it in place via chat.update, replacing the
+// buttons with a small confirmation line. That fails for messages posted via response_url
+// (e.g. /ask answers in a channel): they carry payload.message but are owned by a synthetic,
+// un-updatable bot identity, so chat.update returns cant_update_message — in that case (and
+// when there's no message at all, e.g. /ask in a DM) fall back to an ephemeral reply.
 async function confirmClick(opts: {
   botToken: string;
   channelId: string;
@@ -96,14 +97,16 @@ async function confirmClick(opts: {
   responseUrl: string;
   text: string;
 }): Promise<void> {
-  if (opts.messageBlocks) {
-    const blocks = buildConfirmationBlocks(opts.messageBlocks, opts.text);
-    await updateMessage({ botToken: opts.botToken, channel: opts.channelId, ts: opts.messageTs, text: opts.text, blocks }).catch(
-      (err) => console.error("chat.update confirmation failed:", friendlyError(err)),
-    );
-  } else {
-    await postEphemeral(opts.responseUrl, opts.text);
+  if (opts.messageBlocks && opts.channelId && opts.messageTs) {
+    try {
+      const blocks = buildConfirmationBlocks(opts.messageBlocks, opts.text);
+      await updateMessage({ botToken: opts.botToken, channel: opts.channelId, ts: opts.messageTs, text: opts.text, blocks });
+      return;
+    } catch (err) {
+      console.error("chat.update confirmation failed, falling back to ephemeral:", friendlyError(err));
+    }
   }
+  await postEphemeral(opts.responseUrl, opts.text);
 }
 
 async function notifyAdminsOfFlag(

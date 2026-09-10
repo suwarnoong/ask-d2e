@@ -6,6 +6,7 @@ import { applyWizardTurn } from "../src/admin/wizard/addRepoWizard.js";
 import { answerQuestion } from "./_lib/answer.js";
 import { buildAnswerBlocks } from "./ask.js";
 import { maybeStartSelfHeal } from "./_lib/selfHeal.js";
+import { hasKbCitation } from "../src/kb/repoResolution.js";
 import { readRawBody } from "./_lib/rawBody.js";
 
 // Slack HMAC-signs the exact raw request bytes — disable Vercel's automatic
@@ -128,7 +129,10 @@ async function processEvent(
       const blocks = buildAnswerBlocks(question, result.text, result.covered);
       await postMessage({ botToken, channel: event.channel!, text: result.text, blocks, thread_ts: threadTs });
 
-      if (!result.covered) {
+      // Only self-heal on a genuine miss — no answer grounded in the KB. If the answer cited
+      // a KB source (even while flagging NO_KB_MATCH, e.g. "no general X, but here's the D2E
+      // specifics"), don't post the contradictory "doesn't cover that yet" follow-up.
+      if (!result.covered && !hasKbCitation(result.text)) {
         await maybeStartSelfHeal({ question, slackChannel: event.channel!, slackThreadTs: threadTs });
       }
     }

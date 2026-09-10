@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveRepoFromCitation, buildClassificationPrompt, classifyRepoForQuestion } from "./repoResolution.js";
+import { resolveRepoFromCitation, hasKbCitation, buildClassificationPrompt, classifyRepoForQuestion } from "./repoResolution.js";
 import type { RegistryEntry } from "./registry.js";
 
 function entry(name: string): RegistryEntry {
@@ -29,6 +29,15 @@ test("resolveRepoFromCitation returns the name with exactly one distinct citatio
 test("resolveRepoFromCitation returns null with two distinct citations", () => {
   const text = "See repos/acme-widgets/x.md and repos/other-repo/y.md.";
   assert.equal(resolveRepoFromCitation(text), null);
+});
+
+test("hasKbCitation is true when any KB path is cited (even multiple repos)", () => {
+  assert.equal(hasKbCitation("Source: repos/acme-widgets/00-overview/intro.md"), true);
+  assert.equal(hasKbCitation("See repos/a/x.md and repos/b/y.md"), true);
+});
+
+test("hasKbCitation is false for a genuine miss with no citation", () => {
+  assert.equal(hasKbCitation("I don't have information about dinosaurs in this knowledge base."), false);
 });
 
 test("buildClassificationPrompt includes registry metadata but not full KB bodies", () => {

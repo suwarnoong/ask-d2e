@@ -5,6 +5,7 @@ import { verifySlackSignature, friendlyError } from "../src/shared/slackAuth.js"
 import { chunkText, toSlackMrkdwn, type Block } from "../src/shared/slackBlocks.js";
 import { answerQuestion } from "./_lib/answer.js";
 import { maybeStartSelfHeal } from "./_lib/selfHeal.js";
+import { hasKbCitation } from "../src/kb/repoResolution.js";
 import { readRawBody } from "./_lib/rawBody.js";
 
 export const config = { api: { bodyParser: false } };
@@ -78,7 +79,8 @@ async function answerAndRespond(question: string, responseUrl: string): Promise<
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ response_type: "in_channel", blocks, text: result.text }),
     });
-    if (!result.covered) {
+    // Only self-heal on a genuine miss — see slack-events.ts for the rationale.
+    if (!result.covered && !hasKbCitation(result.text)) {
       await maybeStartSelfHeal({ question, respondViaResponseUrl: responseUrl });
     }
   } catch (err) {

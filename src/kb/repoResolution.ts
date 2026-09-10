@@ -8,6 +8,13 @@ export function resolveRepoFromCitation(answerText: string): string | null {
   return names.length === 1 ? names[0] : null;
 }
 
+// True when the answer cites at least one KB source path — i.e. it was grounded in real
+// KB content, not a "we don't have that" miss. Used to gate self-heal: an answer that cited
+// the KB shouldn't trigger a "doesn't cover that yet" follow-up even if it flagged NO_KB_MATCH.
+export function hasKbCitation(answerText: string): boolean {
+  return /repos\/[^/\s]+\//.test(answerText);
+}
+
 export function buildClassificationPrompt(question: string, registry: RegistryEntry[]): string {
   const repoLines = registry
     .map((e) => `- ${e.name}: audience=${e.promptSpec.audience}; focusAreas=${e.promptSpec.focusAreas.join(", ")}`)
