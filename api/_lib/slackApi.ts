@@ -80,6 +80,7 @@ export async function updateMessage(opts: {
     ts: opts.ts,
     text: opts.text,
     blocks: opts.blocks,
+    as_user: true,
   });
 }
 
