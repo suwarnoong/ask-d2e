@@ -4,6 +4,7 @@ import { applyAnswer, questionFor } from "./steps.js";
 import type { PromptSpec, RegistryEntry } from "../../kb/registry.js";
 import type { SlackHistoryMessage } from "../../../api/_lib/slackApi.js";
 import type { AnthropicLikeClient } from "../../shared/anthropicLike.js";
+import { taskModel } from "../../shared/config.js";
 
 export function slugFromSourceRepo(sourceRepo: string): string {
   const repoPart = sourceRepo.includes("/") ? sourceRepo.split("/")[1] : sourceRepo;
@@ -28,7 +29,7 @@ in scopeNotes; otherwise scopeNotes can be an empty string. Respond with only th
 export async function craftPromptSpec(answers: Record<string, string>, client?: AnthropicLikeClient): Promise<PromptSpec> {
   const anthropic = client ?? (new Anthropic({ authToken: process.env.CLAUDE_CODE_OAUTH_TOKEN }) as unknown as AnthropicLikeClient);
   const response = await anthropic.messages.create({
-    model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5",
+    model: taskModel("CRAFTING_MODEL", "claude-sonnet-4-5"),
     max_tokens: 512,
     messages: [{ role: "user", content: buildCraftingPrompt(answers) }],
   });

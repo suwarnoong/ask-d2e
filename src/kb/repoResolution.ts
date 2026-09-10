@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { RegistryEntry } from "./registry.js";
 import type { AnthropicLikeClient } from "../shared/anthropicLike.js";
+import { taskModel } from "../shared/config.js";
 
 export function resolveRepoFromCitation(answerText: string): string | null {
   const names = [...new Set([...answerText.matchAll(/repos\/([^/\s]+)\//g)].map((m) => m[1]))];
@@ -29,7 +30,7 @@ export async function classifyRepoForQuestion(
 ): Promise<string | null> {
   const anthropic = client ?? (new Anthropic({ authToken: process.env.CLAUDE_CODE_OAUTH_TOKEN }) as unknown as AnthropicLikeClient);
   const response = await anthropic.messages.create({
-    model: process.env.CLAUDE_MODEL ?? "claude-haiku-4-5",
+    model: taskModel("CLASSIFY_MODEL", "claude-haiku-4-5"),
     max_tokens: 32,
     messages: [{ role: "user", content: buildClassificationPrompt(question, registry) }],
   });
