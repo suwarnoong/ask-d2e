@@ -136,7 +136,9 @@ async function notifyAdminsOfFlag(
       type: "actions",
       elements: [
         { type: "button", text: { type: "plain_text", text: "🔄 Refresh KB & Answer" }, action_id: "admin_fix_confirm", value, style: "primary" },
-        { type: "button", text: { type: "plain_text", text: "✖️ Dismiss" }, action_id: "admin_fix_dismiss", value: "" },
+        // Slack rejects an empty button value ("invalid_blocks: must be more than 0 characters"),
+        // so give Dismiss a non-empty placeholder — its value is never read (routed by action_id).
+        { type: "button", text: { type: "plain_text", text: "✖️ Dismiss" }, action_id: "admin_fix_dismiss", value: "dismiss" },
       ],
     });
   } else {
@@ -145,12 +147,17 @@ async function notifyAdminsOfFlag(
       text: { type: "mrkdwn", text: "_Couldn't determine which configured repo this belongs to — may need manual follow-up._" },
     });
   }
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     [...adminIds()].map(async (adminId) => {
       const channel = await openDm(botToken, adminId);
       await postMessage({ botToken, channel, text: `Flagged by <@${userId}>: "${question}"`, blocks });
     }),
   );
+  // Don't let a failed DM vanish silently (that's how the empty-button-value bug hid) —
+  // log rejections so they're visible in the function logs.
+  for (const r of results) {
+    if (r.status === "rejected") console.error("notifyAdminsOfFlag: admin DM failed:", friendlyError(r.reason));
+  }
 }
 
 async function dispatchCorrectFix(
