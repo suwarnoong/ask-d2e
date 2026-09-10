@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, isAdmin, adminIds, friendlyError } from "../src/shared/slackAuth.js";
-import { postMessage, openDm } from "./_lib/slackApi.js";
+import { postMessage, openDm, updateMessage } from "./_lib/slackApi.js";
 import { resolveRepoFromCitation, classifyRepoForQuestion } from "../src/kb/repoResolution.js";
 import { loadRegistry } from "../src/kb/registry.js";
 import { buildCorrectDispatchPayload } from "./_lib/selfHeal.js";
@@ -65,10 +65,15 @@ export function unpackFixContext(value: string): FixContext | null {
   }
 }
 
-// Ephemeral reply via the interaction's own response_url — works regardless of how or where
-// the original message was posted, and never risks touching (or losing) that message's content.
-// chat.update was tried here and reliably failed with cant_update_message even with as_user
-// set consistently on both post and update; not worth chasing further right now.
+// Rebuilds a bot-owned message's blocks for the post-click state: strips the feedback/admin
+// buttons (so they can't be double-clicked) and appends a small confirmation line.
+export function buildConfirmationBlocks(messageBlocks: Block[], confirmationText: string): Block[] {
+  return [
+    ...messageBlocks.filter((b) => b.type !== "actions"),
+    { type: "context", elements: [{ type: "mrkdwn", text: confirmationText }] },
+  ];
+}
+
 async function postEphemeral(responseUrl: string, text: string): Promise<void> {
   if (!responseUrl) return;
   await fetch(responseUrl, {
@@ -76,6 +81,29 @@ async function postEphemeral(responseUrl: string, text: string): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ response_type: "ephemeral", replace_original: false, text }),
   }).catch((err) => console.error("response_url confirmation failed:", friendlyError(err)));
+}
+
+// Confirms a click in the nicest way available: if the message is bot-owned (payload.message
+// was present — chat.postMessage-origin, e.g. @mention answers and admin DMs), edit it in place
+// via chat.update, replacing the buttons with a small confirmation line. If it's not (messages
+// posted via response_url, e.g. /ask answers, don't expose payload.message on later
+// interactions — there's nothing to safely rebuild from), fall back to an ephemeral reply.
+async function confirmClick(opts: {
+  botToken: string;
+  channelId: string;
+  messageTs: string;
+  messageBlocks: Block[] | null;
+  responseUrl: string;
+  text: string;
+}): Promise<void> {
+  if (opts.messageBlocks) {
+    const blocks = buildConfirmationBlocks(opts.messageBlocks, opts.text);
+    await updateMessage({ botToken: opts.botToken, channel: opts.channelId, ts: opts.messageTs, text: opts.text, blocks }).catch(
+      (err) => console.error("chat.update confirmation failed:", friendlyError(err)),
+    );
+  } else {
+    await postEphemeral(opts.responseUrl, opts.text);
+  }
 }
 
 async function notifyAdminsOfFlag(
@@ -160,7 +188,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = payload.user?.id ?? "";
   const actionValue = (action?.value as string) ?? "";
   const question = actionValue;
-  const answerText = ((payload.message?.blocks ?? []) as Block[])
+  // payload.message is only present for bot-owned (chat.postMessage-origin) messages — track
+  // that distinctly from "message exists but has zero blocks" so confirmClick can tell whether
+  // it's safe to rebuild blocks or must fall back to an ephemeral reply.
+  const hasMessage = Boolean(payload.message);
+  const messageBlocks: Block[] | null = hasMessage ? ((payload.message?.blocks ?? []) as Block[]) : null;
+  const answerText = (messageBlocks ?? [])
     .filter((b): b is Extract<Block, { type: "section" }> => b.type === "section")
     .map((b) => b.text.text)
     .join("\n");
@@ -176,7 +209,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The response above already went out — Vercel doesn't guarantee this invocation stays
   // alive for the async work below unless it's wrapped in waitUntil().
   waitUntil(
-    processInteraction(route, botToken, userId, isAdmin(userId), question, answerText, responseUrl, channelId, messageTs, actionValue),
+    processInteraction(
+      route,
+      botToken,
+      userId,
+      isAdmin(userId),
+      question,
+      answerText,
+      messageBlocks,
+      responseUrl,
+      channelId,
+      messageTs,
+      actionValue,
+    ),
   );
 }
 
@@ -187,12 +232,13 @@ async function processInteraction(
   isAdminUser: boolean,
   question: string,
   answerText: string,
+  messageBlocks: Block[] | null,
   responseUrl: string,
   channelId: string,
   messageTs: string,
   actionValue: string,
 ): Promise<void> {
-  const confirm = (text: string) => postEphemeral(responseUrl, text);
+  const confirm = (text: string) => confirmClick({ botToken, channelId, messageTs, messageBlocks, responseUrl, text });
 
   try {
     if (route === "thanks") {

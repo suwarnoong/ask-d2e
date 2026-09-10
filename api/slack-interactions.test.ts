@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeInteraction, packFixContext, unpackFixContext } from "./slack-interactions.js";
+import { routeInteraction, packFixContext, unpackFixContext, buildConfirmationBlocks } from "./slack-interactions.js";
+import type { Block } from "../src/shared/slackBlocks.js";
 
 test("thumbs up routes to thanks", () => {
   assert.equal(routeInteraction("feedback_up"), "thanks");
@@ -40,4 +41,26 @@ test("unpackFixContext returns null for malformed JSON", () => {
 
 test("unpackFixContext returns null when required fields are missing", () => {
   assert.equal(unpackFixContext(JSON.stringify({ repoName: "acme" })), null);
+});
+
+const sampleBlocks: Block[] = [
+  { type: "section", text: { type: "mrkdwn", text: "*Q: what is d2e?*" } },
+  { type: "section", text: { type: "mrkdwn", text: "d2e is..." } },
+  { type: "actions", elements: [{ type: "button" }] },
+];
+
+test("buildConfirmationBlocks strips the actions block and appends a context confirmation", () => {
+  const result = buildConfirmationBlocks(sampleBlocks, "✅ Thanks for the feedback!");
+  assert.equal(result.some((b) => b.type === "actions"), false);
+  assert.deepEqual(result.at(-1), {
+    type: "context",
+    elements: [{ type: "mrkdwn", text: "✅ Thanks for the feedback!" }],
+  });
+});
+
+test("buildConfirmationBlocks preserves the original non-actions blocks unchanged", () => {
+  const result = buildConfirmationBlocks(sampleBlocks, "Dismissed.");
+  assert.equal(result.length, 3);
+  assert.equal(result[0], sampleBlocks[0]);
+  assert.equal(result[1], sampleBlocks[1]);
 });
