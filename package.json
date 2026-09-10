@@ -1,0 +1,25 @@
+{
+  "name": "ask-d2e",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
+    "test": "tsx --test 'src/**/*.test.ts' 'api/**/*.test.ts'",
+    "kb-initial-build": "tsx src/kb/initialBuild.ts",
+    "kb-correct": "tsx src/kb/correct.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
+    "@octokit/rest": "^21.0.2",
+    "@vercel/functions": "^3.7.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@vercel/node": "^5.8.22",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
