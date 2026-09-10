@@ -65,6 +65,7 @@ export async function postMessage(opts: {
     text: opts.text,
     blocks: opts.blocks,
     thread_ts: opts.thread_ts,
+    as_user: true,
   });
 }
 
