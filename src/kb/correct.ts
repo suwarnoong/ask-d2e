@@ -5,7 +5,7 @@ import { listSourceFiles, readReadmes, buildFileTreeOverview } from "./initialBu
 import { parseKbResponse } from "./responseParsing.js";
 import { applyKbChanges } from "./kbFiles.js";
 import { commitAndPush } from "./gitOps.js";
-import { loadRegistry } from "./registry.js";
+import { loadRegistry, withRegistryRetry } from "./registry.js";
 import { postThreadReply, postBlocks } from "../shared/slackBlocks.js";
 import { parseWebhooks } from "../shared/config.js";
 
@@ -92,6 +92,18 @@ export async function runCorrect(config: CorrectConfig, deps: Partial<CorrectDep
 
   const rawResult = await callClaude(prompt, config, { cwd: config.sourceDir, allowedTools: ["Read", "Grep", "Glob"] });
   const plan = parseKbResponse(rawResult);
+
+  // Self-heal's cooldown is spent on the ATTEMPT, whether or not it finds anything — this is the
+  // only place with real git+push access to the KB repo (never from request-handling code on
+  // Vercel, which only has a read-only bundled copy).
+  if (config.mode === "gap-fill" && !config.dryRun) {
+    await withRegistryRetry(
+      config.kbRoot,
+      config.kbTargetBranch,
+      (entries) => entries.map((e) => (e.name === config.repoName ? { ...e, lastAutoRefreshAt: new Date().toISOString() } : e)),
+      `chore(kb): bump lastAutoRefreshAt for ${config.repoName}`,
+    );
+  }
 
   if (plan.changes.length === 0) {
     const text =

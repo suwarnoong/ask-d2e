@@ -1,4 +1,4 @@
-import { canAutoRefresh, withRegistryRetry, loadRegistry, type RegistryEntry } from "../../src/kb/registry.js";
+import { canAutoRefresh, loadRegistry, type RegistryEntry } from "../../src/kb/registry.js";
 import { classifyRepoForQuestion } from "../../src/kb/repoResolution.js";
 import { adminIds } from "../../src/shared/slackAuth.js";
 import { postMessage, openDm } from "./slackApi.js";
@@ -108,14 +108,10 @@ export async function maybeStartSelfHeal(opts: {
     });
   }
 
+  // KB-repo mutations happen only through Actions, via git — never from request-handling code
+  // (this function runs on Vercel against a read-only bundled copy of the KB with no git remote).
+  // The dispatched kb-correct.yml run bumps lastAutoRefreshAt itself once it has real git access.
   await dispatchWorkflow(
     buildCorrectDispatchPayload("gap-fill", decision.repoName, opts.question, interim, "", opts.slackChannel, opts.slackThreadTs),
-  );
-
-  await withRegistryRetry(
-    kbRoot,
-    process.env.KB_TARGET_BRANCH ?? "main",
-    (entries) => entries.map((e) => (e.name === decision.repoName ? { ...e, lastAutoRefreshAt: new Date().toISOString() } : e)),
-    `chore(kb): bump lastAutoRefreshAt for ${decision.repoName}`,
   );
 }

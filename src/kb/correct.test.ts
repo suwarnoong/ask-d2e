@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "./gitOps.js";
+import { loadRegistry } from "./registry.js";
 import { runCorrect, type CorrectConfig } from "./correct.js";
 
 function makeBareOrigin(): string {
@@ -88,4 +89,33 @@ test("runCorrect with empty changes (mode gap-fill) posts a still-not-covered no
   await runCorrect(baseConfig(kbRoot, sourceDir, "gap-fill"), { callClaude: stubClaude, notify: stubNotify });
 
   assert.match(notified, /still not covered|not covered/i);
+});
+
+test("runCorrect (mode gap-fill) bumps lastAutoRefreshAt via git, whether or not it finds anything", async () => {
+  const origin = makeBareOrigin();
+  const kbRoot = seedAndClone(origin);
+  const sourceDir = makeSourceDir();
+  const stubClaude = async () => JSON.stringify({ summary: "nothing found", changes: [] });
+  const stubNotify = async () => {};
+
+  await runCorrect(baseConfig(kbRoot, sourceDir, "gap-fill"), { callClaude: stubClaude, notify: stubNotify });
+
+  const checkClone = mkdtempSync(join(tmpdir(), "correct-check-"));
+  git(checkClone, ["clone", origin, "repo"]);
+  const registry = loadRegistry(join(checkClone, "repo"));
+  assert.equal(registry.length, 1);
+  assert.ok(registry[0].lastAutoRefreshAt, "lastAutoRefreshAt should be set after a gap-fill attempt");
+});
+
+test("runCorrect (mode fix) never touches lastAutoRefreshAt", async () => {
+  const origin = makeBareOrigin();
+  const kbRoot = seedAndClone(origin);
+  const sourceDir = makeSourceDir();
+  const stubClaude = async () => JSON.stringify({ summary: "no issue found", changes: [] });
+  const stubNotify = async () => {};
+
+  await runCorrect(baseConfig(kbRoot, sourceDir, "fix"), { callClaude: stubClaude, notify: stubNotify });
+
+  const registry = loadRegistry(kbRoot);
+  assert.equal(registry[0].lastAutoRefreshAt, null);
 });
