@@ -5,6 +5,12 @@ import { applyWizardTurn } from "../src/admin/wizard/addRepoWizard.js";
 import { answerQuestion } from "./_lib/answer.js";
 import { buildAnswerBlocks } from "./ask.js";
 import { maybeStartSelfHeal } from "./_lib/selfHeal.js";
+import { readRawBody } from "./_lib/rawBody.js";
+
+// Slack HMAC-signs the exact raw request bytes — disable Vercel's automatic
+// body parsing so readRawBody() sees the unparsed stream, not a reconstructed
+// (and signature-breaking) re-serialization of an already-parsed body.
+export const config = { api: { bodyParser: false } };
 
 export interface SlackEventPayload {
   type: string;
@@ -35,8 +41,8 @@ export function classifyEvent(payload: SlackEventPayload, botUserId: string, isR
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-  const payload: SlackEventPayload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+  const rawBody = await readRawBody(req);
+  const payload: SlackEventPayload = JSON.parse(rawBody);
 
   if (payload.type === "url_verification") {
     res.status(200).json({ challenge: payload.challenge });

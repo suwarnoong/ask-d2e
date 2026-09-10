@@ -4,6 +4,9 @@ import { verifySlackSignature, friendlyError } from "../src/shared/slackAuth.js"
 import { chunkText, toSlackMrkdwn, type Block } from "../src/shared/slackBlocks.js";
 import { answerQuestion } from "./_lib/answer.js";
 import { maybeStartSelfHeal } from "./_lib/selfHeal.js";
+import { readRawBody } from "./_lib/rawBody.js";
+
+export const config = { api: { bodyParser: false } };
 
 const ACK_PHRASES = [
   "Looking that up...",
@@ -37,7 +40,7 @@ export function buildAnswerBlocks(question: string, answerText: string, covered:
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const rawBody = typeof req.body === "string" ? req.body : new URLSearchParams(req.body as Record<string, string>).toString();
+  const rawBody = await readRawBody(req);
   const ok = verifySlackSignature(
     rawBody,
     (req.headers["x-slack-signature"] as string) ?? null,

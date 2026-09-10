@@ -5,6 +5,9 @@ import { questionFor } from "../src/admin/wizard/steps.js";
 import { encodeState } from "../src/admin/wizard/state.js";
 import { prefillFromEntry } from "../src/admin/wizard/addRepoWizard.js";
 import { withRegistryRetry, loadRegistry } from "../src/kb/registry.js";
+import { readRawBody } from "./_lib/rawBody.js";
+
+export const config = { api: { bodyParser: false } };
 
 export type ParsedCommand =
   | { kind: "add-repo"; sourceRepo: string }
@@ -36,7 +39,7 @@ export function parseAdminCommand(text: string): ParsedCommand {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const rawBody = typeof req.body === "string" ? req.body : new URLSearchParams(req.body as Record<string, string>).toString();
+  const rawBody = await readRawBody(req);
   const signingSecret = process.env.SLACK_SIGNING_SECRET!;
   const ok = verifySlackSignature(
     rawBody,

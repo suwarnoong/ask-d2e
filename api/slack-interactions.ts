@@ -4,6 +4,9 @@ import { postMessage, openDm } from "./_lib/slackApi.js";
 import { resolveRepoFromCitation, classifyRepoForQuestion } from "../src/kb/repoResolution.js";
 import { loadRegistry } from "../src/kb/registry.js";
 import { buildCorrectDispatchPayload } from "./_lib/selfHeal.js";
+import { readRawBody } from "./_lib/rawBody.js";
+
+export const config = { api: { bodyParser: false } };
 
 export function routeInteraction(actionId: string, isAdminUser: boolean): "thanks" | "log-and-notify-admins" | "dispatch-fix" {
   if (actionId === "feedback_up") return "thanks";
@@ -25,7 +28,7 @@ async function dispatchCorrectFix(repoName: string, question: string, answer: st
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const rawBody = typeof req.body === "string" ? req.body : new URLSearchParams(req.body as Record<string, string>).toString();
+  const rawBody = await readRawBody(req);
   const ok = verifySlackSignature(
     rawBody,
     (req.headers["x-slack-signature"] as string) ?? null,
