@@ -16,11 +16,6 @@ features:
       description: Ask the knowledge base
       usage_hint: how does the query engine work?
       should_escape: false
-    - command: /ask-admin
-      url: https://ask-d2e.vercel.app/api/ask-admin
-      description: Admin actions (add-repo, set-cadence, edit-repo)
-      usage_hint: add-repo owner/name
-      should_escape: false
 oauth_config:
   scopes:
     bot:
