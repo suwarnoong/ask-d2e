@@ -112,7 +112,7 @@ export async function answerQuestion(
 
   const response = await anthropic.messages.create({
     model: process.env.ANSWER_MODEL ?? process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5",
-    max_tokens: 1024,
+    max_tokens: Number(process.env.ANSWER_MAX_TOKENS ?? 4096),
     system,
     messages,
   });

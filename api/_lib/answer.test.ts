@@ -68,6 +68,27 @@ test("answerQuestion returns covered=true for a normal answer", async () => {
   assert.ok(result.text.includes("42"));
 });
 
+test("answerQuestion requests a generous max_tokens so detailed answers aren't cut off", async () => {
+  let capturedMaxTokens: number | undefined;
+  const stubClient = {
+    messages: {
+      create: async (params: any) => {
+        capturedMaxTokens = params.max_tokens;
+        return { content: [{ type: "text", text: "ok" }] };
+      },
+    },
+  };
+  const originalEnv = process.env.ANSWER_MAX_TOKENS;
+  delete process.env.ANSWER_MAX_TOKENS;
+  try {
+    await answerQuestion("anything", [], stubClient as any);
+    assert.equal(capturedMaxTokens, 4096);
+  } finally {
+    if (originalEnv === undefined) delete process.env.ANSWER_MAX_TOKENS;
+    else process.env.ANSWER_MAX_TOKENS = originalEnv;
+  }
+});
+
 test("answerQuestion strips the NO_KB_MATCH sentinel and reports covered=false", async () => {
   const stubClient = {
     messages: { create: async () => ({ content: [{ type: "text", text: `${NO_KB_MATCH}\nSorry, nothing covers that.` }] }) },
