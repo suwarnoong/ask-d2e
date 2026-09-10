@@ -6,6 +6,10 @@ features:
   bot_user:
     display_name: ask-d2e
     always_online: true
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
   slash_commands:
     - command: /ask
       url: https://ask-d2e.vercel.app/api/ask
