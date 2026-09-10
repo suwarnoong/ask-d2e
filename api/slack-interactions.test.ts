@@ -1,7 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeInteraction, packFixContext, unpackFixContext, buildConfirmationBlocks } from "./slack-interactions.js";
+import { routeInteraction, packFixContext, unpackFixContext, buildConfirmationBlocks, soleActiveRepo } from "./slack-interactions.js";
 import type { Block } from "../src/shared/slackBlocks.js";
+import type { RegistryEntry } from "../src/kb/registry.js";
+
+function regEntry(name: string, status: "active" | "pending-initial-build" = "active"): RegistryEntry {
+  return {
+    name,
+    sourceRepo: `acme/${name}`,
+    promptSpec: { audience: "eng", exampleQuestions: [], focusAreas: [], scopeNotes: "" },
+    cadence: "weekly",
+    status,
+    createdBy: "U1",
+    createdAt: "2026-01-01T00:00:00Z",
+    lastRefreshedAt: null,
+    lastAutoRefreshAt: null,
+  };
+}
 
 test("thumbs up routes to thanks", () => {
   assert.equal(routeInteraction("feedback_up"), "thanks");
@@ -63,4 +78,14 @@ test("buildConfirmationBlocks preserves the original non-actions blocks unchange
   assert.equal(result.length, 3);
   assert.equal(result[0], sampleBlocks[0]);
   assert.equal(result[1], sampleBlocks[1]);
+});
+
+test("soleActiveRepo returns the name when exactly one active repo", () => {
+  assert.equal(soleActiveRepo([regEntry("data2evidence")]), "data2evidence");
+  assert.equal(soleActiveRepo([regEntry("data2evidence"), regEntry("other", "pending-initial-build")]), "data2evidence");
+});
+
+test("soleActiveRepo returns null with zero or multiple active repos", () => {
+  assert.equal(soleActiveRepo([]), null);
+  assert.equal(soleActiveRepo([regEntry("a"), regEntry("b")]), null);
 });

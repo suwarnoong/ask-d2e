@@ -3,7 +3,7 @@ import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, isAdmin, adminIds, friendlyError } from "../src/shared/slackAuth.js";
 import { postMessage, openDm, updateMessage } from "./_lib/slackApi.js";
 import { resolveRepoFromCitation, classifyRepoForQuestion } from "../src/kb/repoResolution.js";
-import { loadRegistry } from "../src/kb/registry.js";
+import { loadRegistry, type RegistryEntry } from "../src/kb/registry.js";
 import { buildCorrectDispatchPayload } from "./_lib/selfHeal.js";
 import { readRawBody } from "./_lib/rawBody.js";
 import type { Block } from "../src/shared/slackBlocks.js";
@@ -25,6 +25,14 @@ export function routeInteraction(actionId: string): InteractionRoute {
     default:
       return "ignored";
   }
+}
+
+// When citation/classification can't pin down a repo but there's exactly one active repo
+// configured, that's unambiguously the target — default to it so admins still get a
+// "Refresh KB & Answer" button instead of a dead-end "couldn't determine" note.
+export function soleActiveRepo(registry: RegistryEntry[]): string | null {
+  const active = registry.filter((e) => e.status === "active");
+  return active.length === 1 ? active[0].name : null;
 }
 
 export interface FixContext {
@@ -256,6 +264,9 @@ async function processInteraction(
       let repoName = resolveRepoFromCitation(answerText);
       if (!repoName) {
         repoName = await classifyRepoForQuestion(question, registry);
+      }
+      if (!repoName) {
+        repoName = soleActiveRepo(registry);
       }
       await notifyAdminsOfFlag(botToken, userId, question, answerText, repoName, channelId, messageTs);
       return;
