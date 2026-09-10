@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, isAdmin, adminIds, friendlyError } from "../src/shared/slackAuth.js";
-import { postMessage, openDm } from "./_lib/slackApi.js";
+import { postMessage, openDm, updateMessage } from "./_lib/slackApi.js";
 import { resolveRepoFromCitation, classifyRepoForQuestion } from "../src/kb/repoResolution.js";
 import { loadRegistry } from "../src/kb/registry.js";
 import { buildCorrectDispatchPayload } from "./_lib/selfHeal.js";
@@ -65,6 +65,15 @@ export function unpackFixContext(value: string): FixContext | null {
   }
 }
 
+// Rebuilds a bot-owned message's blocks for the post-click state: strips the feedback/admin
+// buttons (so they can't be double-clicked) and appends a small confirmation line.
+export function buildConfirmationBlocks(messageBlocks: Block[], confirmationText: string): Block[] {
+  return [
+    ...messageBlocks.filter((b) => b.type !== "actions"),
+    { type: "context", elements: [{ type: "mrkdwn", text: confirmationText }] },
+  ];
+}
+
 async function postEphemeral(responseUrl: string, text: string): Promise<void> {
   if (!responseUrl) return;
   await fetch(responseUrl, {
@@ -72,6 +81,29 @@ async function postEphemeral(responseUrl: string, text: string): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ response_type: "ephemeral", replace_original: false, text }),
   }).catch((err) => console.error("response_url confirmation failed:", friendlyError(err)));
+}
+
+// Confirms a click in the nicest way available: if the message is bot-owned (payload.message
+// was present — chat.postMessage-origin, e.g. @mention answers and admin DMs), edit it in place
+// via chat.update, replacing the buttons with a small confirmation line. If it's not (messages
+// posted via response_url, e.g. /ask answers, don't expose payload.message on later
+// interactions — there's nothing to safely rebuild from), fall back to an ephemeral reply.
+async function confirmClick(opts: {
+  botToken: string;
+  channelId: string;
+  messageTs: string;
+  messageBlocks: Block[] | null;
+  responseUrl: string;
+  text: string;
+}): Promise<void> {
+  if (opts.messageBlocks) {
+    const blocks = buildConfirmationBlocks(opts.messageBlocks, opts.text);
+    await updateMessage({ botToken: opts.botToken, channel: opts.channelId, ts: opts.messageTs, text: opts.text, blocks }).catch(
+      (err) => console.error("chat.update confirmation failed:", friendlyError(err)),
+    );
+  } else {
+    await postEphemeral(opts.responseUrl, opts.text);
+  }
 }
 
 async function notifyAdminsOfFlag(
@@ -156,9 +188,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = payload.user?.id ?? "";
   const actionValue = (action?.value as string) ?? "";
   const question = actionValue;
-  const answerText = (payload.message?.blocks ?? [])
-    .filter((b: { type: string }) => b.type === "section")
-    .map((b: { text?: { text?: string } }) => b.text?.text ?? "")
+  // payload.message is only present for bot-owned (chat.postMessage-origin) messages — track
+  // that distinctly from "message exists but has zero blocks" so confirmClick can tell whether
+  // it's safe to rebuild blocks or must fall back to an ephemeral reply.
+  const hasMessage = Boolean(payload.message);
+  const messageBlocks: Block[] | null = hasMessage ? ((payload.message?.blocks ?? []) as Block[]) : null;
+  const answerText = (messageBlocks ?? [])
+    .filter((b): b is Extract<Block, { type: "section" }> => b.type === "section")
+    .map((b) => b.text.text)
     .join("\n");
   const responseUrl = (payload.response_url as string) ?? "";
   const channelId = payload.channel?.id ?? "";
@@ -172,7 +209,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The response above already went out — Vercel doesn't guarantee this invocation stays
   // alive for the async work below unless it's wrapped in waitUntil().
   waitUntil(
-    processInteraction(route, botToken, userId, isAdmin(userId), question, answerText, responseUrl, channelId, messageTs, actionValue),
+    processInteraction(
+      route,
+      botToken,
+      userId,
+      isAdmin(userId),
+      question,
+      answerText,
+      messageBlocks,
+      responseUrl,
+      channelId,
+      messageTs,
+      actionValue,
+    ),
   );
 }
 
@@ -183,19 +232,22 @@ async function processInteraction(
   isAdminUser: boolean,
   question: string,
   answerText: string,
+  messageBlocks: Block[] | null,
   responseUrl: string,
   channelId: string,
   messageTs: string,
   actionValue: string,
 ): Promise<void> {
+  const confirm = (text: string) => confirmClick({ botToken, channelId, messageTs, messageBlocks, responseUrl, text });
+
   try {
     if (route === "thanks") {
-      await postEphemeral(responseUrl, "✅ Thanks for the feedback!");
+      await confirm("✅ Thanks for the feedback!");
       return;
     }
 
     if (route === "notify-admin") {
-      await postEphemeral(responseUrl, "👀 Thanks — flagged for the team to review.");
+      await confirm("👀 Thanks — flagged for the team to review.");
       console.log(`KB feedback (down) from ${userId}: ${question}`);
       const registry = loadRegistry(process.env.KB_ROOT ?? process.cwd() + "/knowledge-base");
       let repoName = resolveRepoFromCitation(answerText);
@@ -207,22 +259,22 @@ async function processInteraction(
     }
 
     if (route === "admin-dismiss") {
-      await postEphemeral(responseUrl, "Dismissed.");
+      await confirm("Dismissed.");
       return;
     }
 
     if (route === "admin-confirm") {
       if (!isAdminUser) {
-        await postEphemeral(responseUrl, "Only admins can do that.");
+        await confirm("Only admins can do that.");
         return;
       }
       const ctx = unpackFixContext(actionValue);
       if (!ctx) {
-        await postEphemeral(responseUrl, "Something went wrong reading that action — try again.");
+        await confirm("Something went wrong reading that action — try again.");
         return;
       }
       await dispatchCorrectFix(ctx.repoName, ctx.question, ctx.answer, userId, ctx.channelId, ctx.messageTs);
-      await postEphemeral(responseUrl, "✅ Dispatched — I'll post the result in the original thread once it's done.");
+      await confirm("✅ Dispatched — I'll post the result in the original thread once it's done.");
       return;
     }
   } catch (err) {

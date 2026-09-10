@@ -68,6 +68,21 @@ export async function postMessage(opts: {
   });
 }
 
+export async function updateMessage(opts: {
+  botToken: string;
+  channel: string;
+  ts: string;
+  text: string;
+  blocks?: unknown[];
+}): Promise<void> {
+  await slackApiCall("chat.update", opts.botToken, {
+    channel: opts.channel,
+    ts: opts.ts,
+    text: opts.text,
+    blocks: opts.blocks,
+  });
+}
+
 export async function openDm(botToken: string, userId: string): Promise<string> {
   const data = await slackApiCall<{ channel: { id: string } }>("conversations.open", botToken, {
     users: userId,
