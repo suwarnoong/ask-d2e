@@ -28,7 +28,12 @@ export async function classifyRepoForQuestion(
   registry: RegistryEntry[],
   client?: AnthropicLikeClient,
 ): Promise<string | null> {
-  const anthropic = client ?? (new Anthropic({ authToken: process.env.CLAUDE_CODE_OAUTH_TOKEN }) as unknown as AnthropicLikeClient);
+  const anthropic =
+    client ??
+    (new Anthropic({
+      authToken: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+      maxRetries: Number(process.env.ANSWER_MAX_RETRIES ?? 5),
+    }) as unknown as AnthropicLikeClient);
   const response = await anthropic.messages.create({
     model: taskModel("CLASSIFY_MODEL", "claude-haiku-4-5"),
     max_tokens: 32,
