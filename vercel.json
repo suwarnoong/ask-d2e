@@ -2,8 +2,8 @@
   "buildCommand": "node scripts/build-kb-bundle.mjs",
   "outputDirectory": "public",
   "functions": {
-    "api/ask.ts": { "maxDuration": 60, "includeFiles": "knowledge-base/**" },
-    "api/slack-events.ts": { "maxDuration": 60, "includeFiles": "knowledge-base/**" },
-    "api/slack-interactions.ts": { "includeFiles": "knowledge-base/repos.json" }
+    "api/ask.ts": { "maxDuration": 300, "includeFiles": "knowledge-base/**" },
+    "api/slack-events.ts": { "maxDuration": 300, "includeFiles": "knowledge-base/**" },
+    "api/slack-interactions.ts": { "maxDuration": 300, "includeFiles": "knowledge-base/repos.json" }
   }
 }
