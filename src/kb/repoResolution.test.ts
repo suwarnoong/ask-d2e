@@ -59,3 +59,58 @@ test("classifyRepoForQuestion returns the named repo from the stub client", asyn
   const result = await classifyRepoForQuestion("q", [entry("widgets")], stubClient as any);
   assert.equal(result, "widgets");
 });
+
+test("resolveRepoFromCitation resolves a snapshot generated-KB path", () => {
+  assert.equal(
+    resolveRepoFromCitation("See snapshots/develop/generated/atlas3/02-frontend/cohort.md"),
+    "atlas3",
+  );
+});
+
+test("resolveRepoFromCitation maps a snapshot docs path to data2evidence", () => {
+  assert.equal(
+    resolveRepoFromCitation("See snapshots/v0.18.1-beta/docs/2-admin_guide/5-setup/cli.md"),
+    "data2evidence",
+  );
+});
+
+test("resolveRepoFromCitation still resolves the legacy repos path", () => {
+  assert.equal(
+    resolveRepoFromCitation("See repos/data2evidence/knowledge-base/00-overview/intro.md"),
+    "data2evidence",
+  );
+});
+
+test("resolveRepoFromCitation refuses to resolve a curated FAQ citation", () => {
+  assert.equal(resolveRepoFromCitation("See curated/faq/faq-03.md"), null);
+});
+
+test("resolveRepoFromCitation refuses to resolve the shared WebAPI contract", () => {
+  assert.equal(resolveRepoFromCitation("See repos/_shared/webapi-contract/sources.md"), null);
+});
+
+test("resolveRepoFromCitation returns null when two different repos are cited", () => {
+  const text = "snapshots/develop/generated/atlas3/a.md and snapshots/develop/generated/trex/b.md";
+  assert.equal(resolveRepoFromCitation(text), null);
+});
+
+test("resolveRepoFromCitation resolves when one repo is cited twice", () => {
+  const text = "snapshots/develop/generated/trex/a.md and snapshots/develop/generated/trex/b.md";
+  assert.equal(resolveRepoFromCitation(text), "trex");
+});
+
+test("hasKbCitation recognises every citation shape the answer engine can emit", () => {
+  for (const path of [
+    "repos/data2evidence/knowledge-base/00-overview/intro.md",
+    "snapshots/develop/docs/2-admin_guide/5-setup/cli.md",
+    "snapshots/develop/generated/trex/01-architecture/engine.md",
+    "repos/_shared/webapi-contract/sources.md",
+    "curated/faq/faq-01.md",
+  ]) {
+    assert.equal(hasKbCitation(`Answer text. ${path}`), true, `should match ${path}`);
+  }
+});
+
+test("hasKbCitation does not fire on ordinary prose", () => {
+  assert.equal(hasKbCitation("There are no citations in this sentence."), false);
+});
