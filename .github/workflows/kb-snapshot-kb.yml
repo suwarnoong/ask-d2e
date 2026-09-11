@@ -137,7 +137,20 @@ jobs:
             exit 0
           fi
           git commit -m "docs(kb): generated tiers for ${{ inputs.snapshot_id }}"
-          git push origin HEAD:main
+          # The bot's self-heal workflow also pushes to this repo, so a run that started minutes
+          # ago can be behind. Rebase onto the new tip and retry rather than losing the work.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt ${attempt}."
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); retrying after rebase."
+            sleep 10
+          done
+          echo "Could not push after 5 attempts." >&2
+          exit 1
 
       - name: Trigger a deploy
         if: env.DEPLOY_HOOK_URL != ''
