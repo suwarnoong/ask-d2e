@@ -46,8 +46,9 @@ export interface RepoPlan {
 }
 
 /**
- * One commit spanning several repos' KB folders — the scheduled refresh can touch more than one
- * repo in a run, and a commit-per-repo would mean a push-per-repo racing against itself.
+ * Make one commit for the KB folders of many repos. A refresh run can change more than one
+ * repo. One commit for each repo would cause one push for each repo, and the pushes would
+ * compete with each other.
  */
 export function commitAndPushMany(
   kbRoot: string,
@@ -83,14 +84,15 @@ export function commitAndPushMany(
 }
 
 /**
- * Shallow-clone a source repo at runtime. The refresh job can't use a static `actions/checkout`
- * step: which repos to clone is only known once `repos.json` and `isDue()` are evaluated.
+ * Clone a source repo with a depth of 1 while the job runs. The refresh job cannot use a fixed
+ * `actions/checkout` step. It knows which repos to clone only after it reads `repos.json` and
+ * calls `isDue()`.
  */
 export function cloneSourceRepo(sourceRepo: string, token: string, destDir: string): void {
   const url = `https://x-access-token:${token}@github.com/${sourceRepo}.git`;
   const result = spawnSync("git", ["clone", "--depth", "1", url, destDir], { encoding: "utf8" });
   if (result.status !== 0) {
-    // git echoes the remote URL on failure — never let the token reach the log.
+    // Git writes the remote URL when it fails. Do not let the token go to the log.
     const stderr = (result.stderr ?? "").split(token).join("***");
     throw new Error(`git clone of ${sourceRepo} failed: ${stderr}`);
   }

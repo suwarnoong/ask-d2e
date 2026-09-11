@@ -2,19 +2,19 @@ name: KB Refresh
 
 on:
   schedule:
-    # Once daily. Per-repo cadence (daily/weekly) is decided inside the job via isDue(),
-    # NOT by having multiple cron schedules.
+    # Run one time each day. The job calls isDue() to apply the cadence of each repo.
+    # Do not add more cron schedules for the different cadence values.
     - cron: "0 23 * * *"
   workflow_dispatch:
-    # Manual trigger for testing — no per-repo inputs needed, it just re-evaluates isDue()
-    # against whatever is in the registry.
+    # A manual trigger for tests. It needs no inputs for each repo. It calls isDue() again
+    # for the entries that are in the registry.
     inputs:
       dry_run:
-        description: "Log the planned changes without committing or pushing"
+        description: "Dry run"
         required: false
         default: "false"
       force:
-        description: "Refresh every active repo now, ignoring each one's cadence"
+        description: "Force refresh, ignoring set cadence value"
         required: false
         default: "false"
 
@@ -46,8 +46,8 @@ jobs:
       - run: npm ci
       - run: npm install -g @anthropic-ai/claude-code
 
-      # No checkout step for the source repos: which ones to clone is only known once
-      # repos.json and isDue() are evaluated, so refresh.ts clones them itself.
+      # There is no checkout step for the source repos. The job knows which repos to clone
+      # only after it reads repos.json and calls isDue(). Thus refresh.ts clones them.
       - name: Run refresh
         run: npm run kb-refresh
         env:
@@ -57,8 +57,8 @@ jobs:
           KB_ROOT: ${{ github.workspace }}/kb
           WORK_DIR: ${{ github.workspace }}/src-checkout
           KB_DRY_RUN: ${{ inputs.dry_run || 'false' }}
-          # On a schedule run `inputs` is null, so this always falls back to 'false' —
-          # the cron never force-refreshes.
+          # On a schedule run, `inputs` is null. The value is then always 'false'.
+          # The cron thus cannot force a refresh.
           FORCE_REFRESH: ${{ inputs.force || 'false' }}
           CLAUDE_TIMEOUT_MS: "600000"
           DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}

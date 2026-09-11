@@ -26,7 +26,7 @@ function fixtureEntry(overrides: Partial<RegistryEntry> = {}): RegistryEntry {
   };
 }
 
-/** A bare origin plus a working clone seeded with repos.json and one KB page per entry. */
+/** Make a bare origin and a clone. The clone has repos.json and one KB page for each entry. */
 function makeKbRepo(entries: RegistryEntry[]): string {
   const origin = mkdtempSync(join(tmpdir(), "refresh-origin-"));
   git(origin, ["init", "--bare", "-b", "main"]);
@@ -90,7 +90,7 @@ function planJson(paths: string[]): string {
   });
 }
 
-/** Sensible no-op deps; each test overrides only what it cares about. */
+/** Default dependencies that do nothing. Each test replaces only the parts that it needs. */
 function deps(overrides: Partial<RefreshDeps> = {}): Partial<RefreshDeps> {
   return {
     now: NOW,
@@ -103,7 +103,7 @@ function deps(overrides: Partial<RefreshDeps> = {}): Partial<RefreshDeps> {
 }
 
 test("exits without calling Claude when nothing is due", async () => {
-  const kbRoot = makeKbRepo([fixtureEntry({ cadence: "weekly" })]); // refreshed 2 days ago
+  const kbRoot = makeKbRepo([fixtureEntry({ cadence: "weekly" })]); // The last refresh was 2 days ago.
   let called = false;
   await runRefresh(config(kbRoot), deps({ callClaude: async () => { called = true; return planJson([]); } }));
   assert.equal(called, false);
@@ -161,7 +161,7 @@ test("processes a due repo: writes the page, commits it, and bumps lastRefreshed
   const page = readFileSync(join(kbRoot, "repos/widgets/knowledge-base/00-overview/intro.md"), "utf8");
   assert.match(page, /New content/);
   assert.equal(loadRegistry(kbRoot)[0].lastRefreshedAt, NOW.toISOString());
-  // Both the markdown commit and the registry bump must have reached the origin.
+  // The origin must have the markdown commit and the registry commit.
   assert.equal(git(kbRoot, ["status", "--porcelain"]), "");
   const log = git(kbRoot, ["log", "origin/main", "--format=%s"]);
   assert.match(log, /docs\(kb\): scheduled refresh for widgets/);

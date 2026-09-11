@@ -25,7 +25,7 @@ export function loadRegistry(kbRoot: string): RegistryEntry[] {
   return JSON.parse(readFileSync(join(kbRoot, "repos.json"), "utf8"));
 }
 
-/** How long a repo's cadence says to wait between refreshes — also the fallback PR window. */
+/** The time to wait between two refreshes. It is also the default PR window. */
 export function cadenceWindowMs(cadence: RegistryEntry["cadence"]): number {
   return cadence === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
 }

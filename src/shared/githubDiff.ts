@@ -53,7 +53,7 @@ export interface RawPr {
   merged_at?: string | null;
 }
 
-/** The seam every network call goes through, so the gather logic is testable without Octokit. */
+/** All network calls go through this interface. Tests can then replace Octokit. */
 export interface GithubClient {
   searchMergedPrNumbers(sourceRepo: string, sinceIso: string): Promise<number[]>;
   getPr(sourceRepo: string, prNumber: number): Promise<RawPr>;
@@ -71,7 +71,7 @@ export function splitRepo(sourceRepo: string): [string, string] {
 
 export function bodyExcerpt(body: string | null | undefined, cap = BODY_EXCERPT_CAP): string {
   const collapsed = (body ?? "")
-    .replace(/<!--[\s\S]*?-->/g, "") // PR templates are mostly HTML comments — drop them wholesale
+    .replace(/<!--[\s\S]*?-->/g, "") // Most of a PR template is HTML comments. Remove all of them.
     .replace(/\r/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -121,7 +121,7 @@ export function createOctokitClient(githubToken: string): GithubClient {
       const items = await octokit.paginate(octokit.rest.search.issuesAndPullRequests, {
         q: `repo:${sourceRepo} is:pr is:merged merged:>=${sinceIso}`,
         per_page: 100,
-        // Required by the newer search backend; not yet in the typed params.
+        // The new search backend needs this parameter. The types do not include it yet.
         advanced_search: "true",
       } as Parameters<typeof octokit.rest.search.issuesAndPullRequests>[0]);
       return items.map((i) => i.number);
@@ -155,9 +155,9 @@ export async function gatherRepoPrs(
 
   const prs: PrSummary[] = [];
   for (const number of numbers) {
-    // Search results omit additions/deletions/changed_files, so the full PR is always refetched.
+    // Search results do not give additions, deletions, or changed_files. Get the full PR.
     const raw = await client.getPr(sourceRepo, number);
-    // Search's `merged:>=` granularity is only to the day — drop anything actually older.
+    // The `merged:>=` filter is accurate only to the day. Remove the PRs that are too old.
     if (raw.merged_at && new Date(raw.merged_at).getTime() < sinceMs) continue;
 
     const files = await client.listPrFiles(sourceRepo, number);

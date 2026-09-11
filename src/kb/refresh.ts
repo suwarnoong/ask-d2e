@@ -79,10 +79,10 @@ export async function runRefresh(config: RefreshConfig, deps: Partial<RefreshDep
   const now = deps.now ?? new Date();
 
   const registry = loadRegistry(config.kbRoot);
-  // A pending-initial-build entry has no KB pages to bring up to date yet — skip it entirely
-  // rather than let its null lastRefreshedAt read as "due".
-  // `force` overrides the cadence gate only — a pending-initial-build entry still has no KB
-  // pages to bring up to date, so it stays excluded either way.
+  // Refresh only the entries with the status active. An entry with the status
+  // pending-initial-build has no KB pages to update. Its lastRefreshedAt is also null, and a
+  // null value makes isDue() return true. `force` ignores the cadence, but it does not change
+  // this rule.
   const due = registry.filter((e) => e.status === "active" && (config.force || isDue(e, now)));
   if (due.length === 0) {
     console.log(config.force ? "No active repos in the registry." : "No repos are due for refresh.");
@@ -98,8 +98,8 @@ export async function runRefresh(config: RefreshConfig, deps: Partial<RefreshDep
     const data = await gatherRepoPrs(entry.sourceRepo, sinceIso, config.sourceReposToken);
 
     if (data.totals.prCount === 0 && config.skipIfEmpty) {
-      // Deliberately NOT marked processed: lastRefreshedAt stays put so the next run widens the
-      // same window rather than silently skipping past a quiet period.
+      // Do not add this entry to `processed`. Its lastRefreshedAt does not change. The next
+      // run then makes the same window larger, and no quiet period is lost.
       console.log(`${entry.name}: no merged PRs since ${sinceIso} — skipping.`);
       continue;
     }
@@ -114,7 +114,7 @@ export async function runRefresh(config: RefreshConfig, deps: Partial<RefreshDep
     );
 
     if (plan.changes.length > 0) applyKbChanges(plan.changes, config.kbRoot, entry.name);
-    // An empty-changes result on a due repo is a normal, successful refresh — still processed.
+    // A result with no changes is a correct result. Add the entry to `processed`.
     processed.push({ entry, plan, prCount: data.totals.prCount });
     console.log(`${entry.name}: ${data.totals.prCount} PR(s), ${plan.changes.length} change(s).`);
   }
@@ -130,11 +130,11 @@ export async function runRefresh(config: RefreshConfig, deps: Partial<RefreshDep
     return;
   }
 
-  // Order matters: the markdown is committed and pushed BEFORE the registry bump, because
-  // withRegistryRetry starts each attempt with `git reset --hard origin/<branch>` — which would
-  // discard uncommitted edits to tracked KB files. Once pushed, that reset lands on a commit
-  // that already contains them. The registry stays a separate, retry-safe write because
-  // repos.json is the one file genuinely prone to races with the wizard/correction flows.
+  // The sequence is important. Commit and push the markdown BEFORE you update the registry.
+  // withRegistryRetry starts each attempt with `git reset --hard origin/<branch>`. That command
+  // removes the changes to the tracked KB files if you do not commit them first. After the push,
+  // the reset goes to a commit that contains those changes. The registry write stays separate
+  // because repos.json is the one file that the wizard and the correction flows also write.
   const names = processed.map((p) => p.entry.name);
   const wrote = commitAndPushMany(
     config.kbRoot,
