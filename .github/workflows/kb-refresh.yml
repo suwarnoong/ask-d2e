@@ -1,0 +1,58 @@
+name: KB Refresh
+
+on:
+  schedule:
+    # Once daily. Per-repo cadence (daily/weekly) is decided inside the job via isDue(),
+    # NOT by having multiple cron schedules.
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    # Manual trigger for testing — no per-repo inputs needed, it just re-evaluates isDue()
+    # against whatever is in the registry.
+    inputs:
+      dry_run:
+        description: "Log the planned changes without committing or pushing"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kb-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ask-d2e
+        uses: actions/checkout@v4
+
+      - name: Checkout ask-d2e-kb
+        uses: actions/checkout@v4
+        with:
+          repository: suwarnoong/ask-d2e-kb
+          token: ${{ secrets.KB_REPO_TOKEN }}
+          path: kb
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm install -g @anthropic-ai/claude-code
+
+      # No checkout step for the source repos: which ones to clone is only known once
+      # repos.json and isDue() are evaluated, so refresh.ts clones them itself.
+      - name: Run refresh
+        run: npm run kb-refresh
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          KB_REPO_TOKEN: ${{ secrets.KB_REPO_TOKEN }}
+          SOURCE_REPOS_TOKEN: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          KB_ROOT: ${{ github.workspace }}/kb
+          WORK_DIR: ${{ github.workspace }}/src-checkout
+          KB_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          CLAUDE_TIMEOUT_MS: "600000"
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+          SLACK_WEBHOOK_URLS: ${{ secrets.SLACK_WEBHOOK_URLS }}
