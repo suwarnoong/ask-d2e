@@ -400,14 +400,14 @@ export function resolveScopedPath(scope: KbScope, relPath: string): string {
   const target = resolveIfAllowed(scope, relPath);
   if (target === null) {
     throw new Error(
-      `Refusing to read "${relPath}": outside the allowed scope (${scope.allowedPrefixes.join(", ")}).`,
+      `Refusing to read a path outside the allowed scope (${scope.allowedPrefixes.join(", ")}): "${relPath}".`,
     );
   }
   return target;
 }
 ```
 
-Note: `resolve` normalises `..` before the prefix comparison, so traversal is caught by the prefix check itself, and an absolute `relPath` replaces the root entirely and fails the root check.
+Note: `resolve` normalises `..` before the prefix comparison, so traversal is caught by the prefix check itself, and an absolute `relPath` replaces the root entirely and fails the root check. The message names the scope first and the offending path last so it satisfies the step-1 test's `/outside the allowed scope.*v0\.17\.1-beta/s` assertion.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
