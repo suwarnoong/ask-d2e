@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyEvent, type SlackEventPayload } from "./slack-events.js";
+import { classifyEvent, threadFollowupDecision, type SlackEventPayload } from "./slack-events.js";
+import type { SlackHistoryMessage } from "./_lib/slackApi.js";
 
 const BOT = "UBOT";
 
@@ -57,4 +58,34 @@ test("a message with a subtype (edit/join/bot) is ignored", () => {
 test("a message carrying a bot_id is treated as self (loop guard)", () => {
   const payload = { type: "event_callback", event: { type: "message", bot_id: "B1", channel: "C1", channel_type: "channel", text: "x", ts: "5", thread_ts: "1" } } as SlackEventPayload;
   assert.equal(classifyEvent(payload, BOT, false), "self");
+});
+
+// thread owner = author of the root message; bot replied in the thread below it.
+const ownedThread: SlackHistoryMessage[] = [
+  { ts: "1", text: "<@UBOT> what is trex?", user: "UOWNER" },
+  { ts: "2", text: "Trex is...", bot_id: "B1" },
+];
+
+test("threadFollowupDecision answers an untagged reply from the thread owner", () => {
+  assert.equal(threadFollowupDecision(ownedThread, "UOWNER", BOT), "answer");
+});
+
+test("threadFollowupDecision ignores an untagged reply from a non-owner", () => {
+  assert.equal(threadFollowupDecision(ownedThread, "USOMEONE_ELSE", BOT), "not-owner");
+});
+
+test("threadFollowupDecision ignores a thread the bot never took part in", () => {
+  const noBot: SlackHistoryMessage[] = [
+    { ts: "1", text: "hey", user: "UOWNER" },
+    { ts: "2", text: "reply", user: "UOWNER" },
+  ];
+  assert.equal(threadFollowupDecision(noBot, "UOWNER", BOT), "not-participant");
+});
+
+test("threadFollowupDecision treats a bot-rooted thread (/ask) as having no untagged owner", () => {
+  const askThread: SlackHistoryMessage[] = [
+    { ts: "1", text: "Looking that up...", bot_id: "B1", user: BOT },
+    { ts: "2", text: "Trex is...", bot_id: "B1", user: BOT },
+  ];
+  assert.equal(threadFollowupDecision(askThread, "UASKER", BOT), "not-owner");
 });

@@ -135,10 +135,13 @@ async function main() {
     { user: "U2", text: "what about caching?", ts: "5" },
   ];
 
-  const followUp = { type: "message", channel_type: "channel", user: "U1", channel: "C1", text: "and the caching layer?", ts: "5", thread_ts: "1" };
+  // threadWithBot's root message is authored by U1, so U1 is the thread owner.
+  const ownerFollowUp = { type: "message", channel_type: "channel", user: "U1", channel: "C1", text: "and the caching layer?", ts: "5", thread_ts: "1" };
+  const strangerFollowUp = { type: "message", channel_type: "channel", user: "U2", channel: "C1", text: "and the caching layer?", ts: "5", thread_ts: "1" };
 
-  await scenario("untagged thread follow-up, bot participated → answers in thread", followUp, threadWithBot);
-  await scenario("untagged thread reply, bot NOT a participant → ignored", followUp, threadNoBot);
+  await scenario("untagged follow-up from the THREAD OWNER → answers in thread", ownerFollowUp, threadWithBot);
+  await scenario("untagged reply from a NON-OWNER → ignored (they must @mention)", strangerFollowUp, threadWithBot);
+  await scenario("untagged thread reply, bot NOT a participant → ignored", ownerFollowUp, threadNoBot);
   await scenario(
     "top-level channel message (not a thread) → ignored",
     { type: "message", channel_type: "channel", user: "U1", channel: "C1", text: "random chatter", ts: "5" },

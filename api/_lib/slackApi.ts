@@ -118,6 +118,15 @@ export async function openDm(botToken: string, userId: string): Promise<string> 
   return data.channel.id;
 }
 
+export async function getThreadMessages(botToken: string, channel: string, thread_ts: string): Promise<SlackHistoryMessage[]> {
+  const data = await slackApiForm<{ messages: SlackHistoryMessage[] }>("conversations.replies", botToken, {
+    channel,
+    ts: thread_ts,
+    limit: 50,
+  });
+  return data.messages;
+}
+
 export async function getThreadReplies(
   botToken: string,
   channel: string,
@@ -125,12 +134,7 @@ export async function getThreadReplies(
   botUserId?: string,
   excludeTs?: string,
 ): Promise<Turn[]> {
-  const data = await slackApiForm<{ messages: SlackHistoryMessage[] }>("conversations.replies", botToken, {
-    channel,
-    ts: thread_ts,
-    limit: 50,
-  });
-  return mapHistoryToTurns(data.messages, botUserId, excludeTs);
+  return mapHistoryToTurns(await getThreadMessages(botToken, channel, thread_ts), botUserId, excludeTs);
 }
 
 export async function getDmHistory(botToken: string, channel: string, limit = 20): Promise<SlackHistoryMessage[]> {

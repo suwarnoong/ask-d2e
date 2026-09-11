@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature } from "../src/shared/slackAuth.js";
-import { getThreadReplies, getBotUserId, postMessage, stripMention } from "./_lib/slackApi.js";
+import { getThreadReplies, getThreadMessages, getBotUserId, postMessage, stripMention, mapHistoryToTurns, type SlackHistoryMessage } from "./_lib/slackApi.js";
 import { answerInThread } from "./_lib/answerFlow.js";
 import { readRawBody } from "./_lib/rawBody.js";
 
@@ -57,6 +57,23 @@ export function classifyEvent(payload: SlackEventPayload, botUserId: string, isR
     return "ignored";
   }
   return "ignored";
+}
+
+export type ThreadFollowupDecision = "answer" | "not-participant" | "not-owner";
+
+// Untagged replies in a thread are only answered for the person who started the thread (the
+// author of its root message). Anyone else must @mention the bot (which routes to app_mention).
+// The bot must also have taken part in the thread — otherwise it's an unrelated conversation.
+export function threadFollowupDecision(
+  messages: SlackHistoryMessage[],
+  replyUserId: string,
+  botUserId: string,
+): ThreadFollowupDecision {
+  const botParticipated = messages.some((m) => Boolean(m.bot_id) || m.user === botUserId);
+  if (!botParticipated) return "not-participant";
+  const owner = messages[0]?.user; // conversations.replies returns the root message first
+  if (!owner || replyUserId !== owner) return "not-owner";
+  return "answer";
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -120,13 +137,15 @@ async function processEvent(
 
     if (classification === "thread_followup") {
       const parentThreadTs = event.thread_ts!;
-      const history = await getThreadReplies(botToken, event.channel!, parentThreadTs, botUserId, event.ts);
-      // Only engage in threads the bot actually took part in — a prior assistant turn means the
-      // bot answered here before. Otherwise this is just an unrelated threaded conversation.
-      if (!history.some((t) => t.role === "assistant")) {
-        console.log("thread_followup: bot is not a participant in this thread — ignoring");
+      const messages = await getThreadMessages(botToken, event.channel!, parentThreadTs);
+      const decision = threadFollowupDecision(messages, event.user!, botUserId);
+      if (decision !== "answer") {
+        // not-participant: unrelated thread. not-owner: only the thread starter gets untagged
+        // answers — anyone else must @mention the bot.
+        console.log(`thread_followup: ${decision} — ignoring (user=${event.user})`);
         return;
       }
+      const history = mapHistoryToTurns(messages, botUserId, event.ts);
       const question = stripMention(event.text ?? "", botUserId);
       await answerInThread({ botToken, channel: event.channel!, question, history, parentThreadTs });
       return;
