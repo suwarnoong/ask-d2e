@@ -1,6 +1,10 @@
 import { KB_TOOL_DEFS, executeKbTool } from "./kbTools.js";
 import type { KbScope } from "../../src/kb/kbScope.js";
-import type { AnthropicLikeClient, AnthropicLikeBlock } from "../../src/shared/anthropicLike.js";
+import type {
+  AnthropicLikeClient,
+  AnthropicLikeBlock,
+  AnthropicLikeResponse,
+} from "../../src/shared/anthropicLike.js";
 
 export interface RetrievalBudget {
   /** Maximum model calls before the loop is cut off. */
@@ -58,6 +62,62 @@ const TRUNCATION_NOTE =
   "You have reached your search budget. Answer now from what you have already read. " +
   "Say explicitly that your search was truncated, and cite only files you actually read.";
 
+interface ToolTurn {
+  blocks: ToolResultBlock[];
+  bytes: number;
+  pathsRead: string[];
+}
+
+/** One model call with the KB tools offered. */
+async function askWithTools(
+  options: RetrievalOptions,
+  messages: { role: string; content: unknown }[],
+): Promise<AnthropicLikeResponse> {
+  return options.client.messages.create({
+    model: options.model,
+    max_tokens: options.maxTokens,
+    system: options.system,
+    messages,
+    tools: KB_TOOL_DEFS,
+  });
+}
+
+/** Executes every tool_use block of one assistant turn, in order. */
+function toolTurn(toolUses: AnthropicLikeBlock[], scope: KbScope): ToolTurn {
+  const blocks: ToolResultBlock[] = [];
+  const pathsRead: string[] = [];
+  let bytes = 0;
+  for (const use of toolUses) {
+    const result = executeKbTool(use.name ?? "", use.input ?? {}, scope);
+    bytes += result.bytes;
+    if (use.name === "read_kb_file" && !result.isError) {
+      const path = typeof use.input?.path === "string" ? use.input.path : null;
+      if (path && !pathsRead.includes(path)) pathsRead.push(path);
+    }
+    blocks.push({
+      type: "tool_result",
+      tool_use_id: use.id as string,
+      content: result.content,
+      is_error: result.isError,
+    });
+  }
+  return { blocks, bytes, pathsRead };
+}
+
+/** The final budget-exhausted call, made without tools so the model must answer. */
+async function answerWithoutTools(
+  options: RetrievalOptions,
+  messages: { role: string; content: unknown }[],
+): Promise<string> {
+  const final = await options.client.messages.create({
+    model: options.model,
+    max_tokens: options.maxTokens,
+    system: options.system,
+    messages,
+  });
+  return textOf(final.content ?? []);
+}
+
 export async function runRetrievalLoop(options: RetrievalOptions): Promise<RetrievalOutcome> {
   const budget = options.budget ?? defaultBudget();
   const messages = [...options.messages];
@@ -69,13 +129,7 @@ export async function runRetrievalLoop(options: RetrievalOptions): Promise<Retri
   let lastText = "";
 
   while (turns < budget.maxTurns) {
-    const response = await options.client.messages.create({
-      model: options.model,
-      max_tokens: options.maxTokens,
-      system: options.system,
-      messages,
-      tools: KB_TOOL_DEFS,
-    });
+    const response = await askWithTools(options, messages);
     turns++;
 
     const blocks = response.content ?? [];
@@ -86,24 +140,14 @@ export async function runRetrievalLoop(options: RetrievalOptions): Promise<Retri
       return { text: lastText, turns, bytesRead, filesRead, truncated: false };
     }
 
-    const results: ToolResultBlock[] = [];
-    for (const use of toolUses) {
-      const result = executeKbTool(use.name ?? "", use.input ?? {}, options.scope);
-      bytesRead += result.bytes;
-      if (use.name === "read_kb_file" && !result.isError) {
-        const path = typeof use.input?.path === "string" ? use.input.path : null;
-        if (path && !filesRead.includes(path)) filesRead.push(path);
-      }
-      results.push({
-        type: "tool_result",
-        tool_use_id: use.id as string,
-        content: result.content,
-        is_error: result.isError,
-      });
+    const turn = toolTurn(toolUses, options.scope);
+    bytesRead += turn.bytes;
+    for (const path of turn.pathsRead) {
+      if (!filesRead.includes(path)) filesRead.push(path);
     }
 
     messages.push({ role: "assistant", content: blocks });
-    messages.push({ role: "user", content: results });
+    messages.push({ role: "user", content: turn.blocks });
 
     if (bytesRead >= budget.maxBytes) {
       truncated = true;
@@ -115,13 +159,8 @@ export async function runRetrievalLoop(options: RetrievalOptions): Promise<Retri
 
   // Budget exhausted: ask once more with no tools, so the caller always gets text.
   messages.push({ role: "user", content: TRUNCATION_NOTE });
-  const final = await options.client.messages.create({
-    model: options.model,
-    max_tokens: options.maxTokens,
-    system: options.system,
-    messages,
-  });
+  const finalText = await answerWithoutTools(options, messages);
   turns++;
 
-  return { text: textOf(final.content ?? []) || lastText, turns, bytesRead, filesRead, truncated };
+  return { text: finalText || lastText, turns, bytesRead, filesRead, truncated };
 }

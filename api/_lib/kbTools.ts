@@ -120,6 +120,25 @@ function collectMarkdown(dir: string, out: string[]): void {
   }
 }
 
+function searchFiles(files: string[], re: RegExp, kbRoot: string): string[] {
+  const matches: string[] = [];
+  for (const abs of files.sort()) {
+    if (matches.length >= MAX_GREP_MATCHES) break;
+    let content: string;
+    try {
+      content = readFileSync(abs, "utf8");
+    } catch {
+      continue;
+    }
+    const relPath = relative(kbRoot, abs).split(sep).join("/");
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length && matches.length < MAX_GREP_MATCHES; i++) {
+      if (re.test(lines[i])) matches.push(`${relPath}:${i + 1}: ${lines[i].trim()}`);
+    }
+  }
+  return matches;
+}
+
 function grepKb(input: Record<string, unknown>, scope: KbScope): KbToolResult {
   const pattern = stringArg(input, "pattern");
   if (!pattern) return fail('grep_kb requires a non-empty string "pattern".');
@@ -149,21 +168,7 @@ function grepKb(input: Record<string, unknown>, scope: KbScope): KbToolResult {
     collectMarkdown(abs, files);
   }
 
-  const matches: string[] = [];
-  for (const abs of files.sort()) {
-    if (matches.length >= MAX_GREP_MATCHES) break;
-    let content: string;
-    try {
-      content = readFileSync(abs, "utf8");
-    } catch {
-      continue;
-    }
-    const relPath = relative(scope.kbRoot, abs).split(sep).join("/");
-    const lines = content.split("\n");
-    for (let i = 0; i < lines.length && matches.length < MAX_GREP_MATCHES; i++) {
-      if (re.test(lines[i])) matches.push(`${relPath}:${i + 1}: ${lines[i].trim()}`);
-    }
-  }
+  const matches = searchFiles(files, re, scope.kbRoot);
 
   if (matches.length === 0) return ok(`No matches for /${pattern}/.`);
   const truncated =
