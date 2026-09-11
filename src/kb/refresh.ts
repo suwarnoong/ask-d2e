@@ -16,6 +16,7 @@ export interface RefreshConfig extends ClaudeAuth {
   kbTargetBranch: string;
   dryRun: boolean;
   skipIfEmpty: boolean;
+  force: boolean;
   kbRoot: string;
   workDir: string;
   deployHookUrl: string;
@@ -30,6 +31,7 @@ export function loadRefreshConfig(): RefreshConfig {
     kbTargetBranch: optional("KB_TARGET_BRANCH", "main"),
     dryRun: optional("KB_DRY_RUN", "false") === "true",
     skipIfEmpty: optional("SKIP_IF_EMPTY", "true") === "true",
+    force: optional("FORCE_REFRESH", "false") === "true",
     kbRoot: optional("KB_ROOT", "./kb"),
     workDir: optional("WORK_DIR", "./src-checkout"),
     deployHookUrl: optional("DEPLOY_HOOK_URL", ""),
@@ -79,12 +81,15 @@ export async function runRefresh(config: RefreshConfig, deps: Partial<RefreshDep
   const registry = loadRegistry(config.kbRoot);
   // A pending-initial-build entry has no KB pages to bring up to date yet — skip it entirely
   // rather than let its null lastRefreshedAt read as "due".
-  const due = registry.filter((e) => e.status === "active" && isDue(e, now));
+  // `force` overrides the cadence gate only — a pending-initial-build entry still has no KB
+  // pages to bring up to date, so it stays excluded either way.
+  const due = registry.filter((e) => e.status === "active" && (config.force || isDue(e, now)));
   if (due.length === 0) {
-    console.log("No repos are due for refresh.");
+    console.log(config.force ? "No active repos in the registry." : "No repos are due for refresh.");
     return;
   }
-  console.log(`Due for refresh: ${due.map((e) => e.name).join(", ")}`);
+  const label = config.force ? "Forced refresh (cadence ignored)" : "Due for refresh";
+  console.log(`${label}: ${due.map((e) => e.name).join(", ")}`);
 
   const processed: ProcessedEntry[] = [];
   for (const entry of due) {

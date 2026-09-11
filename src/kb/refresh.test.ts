@@ -58,6 +58,7 @@ function config(kbRoot: string, overrides: Partial<RefreshConfig> = {}): Refresh
     kbTargetBranch: "main",
     dryRun: false,
     skipIfEmpty: true,
+    force: false,
     kbRoot,
     workDir: mkdtempSync(join(tmpdir(), "refresh-src-")),
     deployHookUrl: "",
@@ -106,6 +107,32 @@ test("exits without calling Claude when nothing is due", async () => {
   let called = false;
   await runRefresh(config(kbRoot), deps({ callClaude: async () => { called = true; return planJson([]); } }));
   assert.equal(called, false);
+});
+
+test("force refreshes a repo that is nowhere near due", async () => {
+  const kbRoot = makeKbRepo([fixtureEntry({ cadence: "weekly", lastRefreshedAt: NOW.toISOString() })]);
+  await runRefresh(config(kbRoot, { force: true }), deps());
+  assert.match(readFileSync(join(kbRoot, "repos/widgets/knowledge-base/00-overview/intro.md"), "utf8"), /New content/);
+  assert.equal(loadRegistry(kbRoot)[0].lastRefreshedAt, NOW.toISOString());
+});
+
+test("force still skips entries pending their initial build", async () => {
+  const kbRoot = makeKbRepo([fixtureEntry({ status: "pending-initial-build", lastRefreshedAt: null })]);
+  let called = false;
+  await runRefresh(config(kbRoot, { force: true }), deps({ gatherRepoPrs: async () => { called = true; return digest(0); } }));
+  assert.equal(called, false);
+});
+
+test("force does not override skipIfEmpty — a repo with no merged PRs is still skipped", async () => {
+  const entry = fixtureEntry({ lastRefreshedAt: NOW.toISOString() });
+  const kbRoot = makeKbRepo([entry]);
+  let claudeCalls = 0;
+  await runRefresh(config(kbRoot, { force: true }), deps({
+    gatherRepoPrs: async () => digest(0),
+    callClaude: async () => { claudeCalls++; return planJson([]); },
+  }));
+  assert.equal(claudeCalls, 0);
+  assert.equal(loadRegistry(kbRoot)[0].lastRefreshedAt, entry.lastRefreshedAt);
 });
 
 test("ignores entries still pending their initial build", async () => {

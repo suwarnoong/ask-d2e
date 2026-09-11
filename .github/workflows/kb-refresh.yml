@@ -13,6 +13,10 @@ on:
         description: "Log the planned changes without committing or pushing"
         required: false
         default: "false"
+      force:
+        description: "Refresh every active repo now, ignoring each one's cadence"
+        required: false
+        default: "false"
 
 permissions:
   contents: write
@@ -53,6 +57,9 @@ jobs:
           KB_ROOT: ${{ github.workspace }}/kb
           WORK_DIR: ${{ github.workspace }}/src-checkout
           KB_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          # On a schedule run `inputs` is null, so this always falls back to 'false' —
+          # the cron never force-refreshes.
+          FORCE_REFRESH: ${{ inputs.force || 'false' }}
           CLAUDE_TIMEOUT_MS: "600000"
           DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
           SLACK_WEBHOOK_URLS: ${{ secrets.SLACK_WEBHOOK_URLS }}
