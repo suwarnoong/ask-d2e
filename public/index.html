@@ -252,11 +252,12 @@
       .card h3 { margin: 0 0 8px; font-size: 1.06rem; font-weight: 800; letter-spacing: -0.02em; }
       .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
 
-      .ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
-      .way { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 26px; box-shadow: var(--shadow); }
+      .ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; align-items: stretch; }
+      .way { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 26px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
       .way .lbl { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 0.98rem; letter-spacing: -0.01em; margin-bottom: 6px; }
-      .way .lbl svg { width: 19px; height: 19px; color: var(--accent); }
+      .way .lbl svg { width: 19px; height: 19px; flex: none; color: var(--accent); }
       .way p { color: var(--muted); font-size: 0.92rem; margin: 0 0 16px; }
+      .way .cmd { margin-top: auto; }
       .cmd {
         display: block; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
         font-size: 0.83rem; background: var(--text); color: #e8f3f2;
