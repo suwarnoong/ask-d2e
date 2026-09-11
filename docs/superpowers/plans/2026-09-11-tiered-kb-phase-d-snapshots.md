@@ -382,7 +382,10 @@ test("parseSnapshotRegistry round-trips a registry", () => {
 });
 
 test("parseSnapshotRegistry throws on an entry missing required fields", () => {
-  assert.throws(() => parseSnapshotRegistry(JSON.stringify({ snapshots: [{ id: "x" }] })), /pins/i);
+  assert.throws(
+    () => parseSnapshotRegistry(JSON.stringify({ snapshots: [{ id: "x" }] })),
+    /Invalid snapshots\.json/,
+  );
 });
 
 test("parseSnapshotRegistry throws on an unknown status", () => {
