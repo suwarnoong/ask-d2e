@@ -12,7 +12,8 @@
     "kb-initial-build": "tsx src/kb/initialBuild.ts",
     "kb-correct": "tsx src/kb/correct.ts",
     "kb-build-docs": "tsx src/kb/buildDocsTierCli.ts",
-    "kb-refresh": "tsx src/kb/refresh.ts"
+    "kb-refresh": "tsx src/kb/refresh.ts",
+    "kb-build-snapshot": "tsx src/kb/buildSnapshotCli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
