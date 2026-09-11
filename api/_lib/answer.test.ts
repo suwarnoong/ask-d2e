@@ -249,3 +249,83 @@ test("the system prompt states tier precedence and the decline rule", async () =
     else process.env.KB_ROOT = prev;
   }
 });
+
+import { writeFileSync as writeSnapshots } from "node:fs";
+
+function rootWithSnapshots(): string {
+  const root = mkdtemp2(join(tmpdir(), "answer-snapshots-"));
+  writeSnapshots(
+    join(root, "snapshots.json"),
+    JSON.stringify({
+      snapshots: [
+        { id: "develop", d2eTag: "develop", pins: { atlas3: "269a00a", trex: "5ce4275" }, status: "active", builtAt: "2026-09-11T00:00:00.000Z", isDevelop: true },
+        { id: "v0.18.1-beta", d2eTag: "v0.18.1-beta", pins: { atlas3: "9baa99a", trex: "dec4a95" }, status: "active", builtAt: "2026-09-11T00:00:00.000Z", isDevelop: false },
+        { id: "v0.18.0-beta", d2eTag: "v0.18.0-beta", pins: { atlas3: "9baa99a", trex: "2988da6" }, status: "active", builtAt: "2026-09-11T00:00:00.000Z", isDevelop: false },
+      ],
+    }),
+  );
+  return root;
+}
+
+async function systemPromptFor(question: string, root: string): Promise<{ system: string; question: string }> {
+  let system = "";
+  let asked = "";
+  const client = {
+    messages: {
+      create: async (...args: unknown[]): Promise<AnthropicLikeResponse> => {
+        const body = args[0] as { system: { text: string }[]; messages: { content: unknown }[] };
+        if (!system) {
+          system = body.system.map((s) => s.text).join("\n");
+          asked = String(body.messages[body.messages.length - 1].content);
+        }
+        return { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" };
+      },
+    },
+  };
+  const prev = process.env.KB_ROOT;
+  process.env.KB_ROOT = root;
+  try {
+    await answerQuestionRetrieval(question, [], client);
+  } finally {
+    if (prev === undefined) delete process.env.KB_ROOT;
+    else process.env.KB_ROOT = prev;
+  }
+  return { system, question: asked };
+}
+
+test("an inline version override routes to that snapshot and is stripped from the question", async () => {
+  const { system, question } = await systemPromptFor("v0.18.1 how do I start?", rootWithSnapshots());
+  assert.match(system, /KNOWLEDGE BASE INDEX \(snapshot: v0\.18\.1-beta\)/);
+  assert.equal(question, "how do I start?");
+});
+
+test("a question with no override uses develop", async () => {
+  const { system } = await systemPromptFor("how do I start?", rootWithSnapshots());
+  assert.match(system, /KNOWLEDGE BASE INDEX \(snapshot: develop\)/);
+});
+
+test("an unsupported version is answered from the nearest release with an explicit caveat", async () => {
+  const root = rootWithSnapshots();
+  let system = "";
+  const client = {
+    messages: {
+      create: async (...args: unknown[]): Promise<AnthropicLikeResponse> => {
+        system = (args[0] as { system: { text: string }[] }).system.map((s) => s.text).join("\n");
+        return { content: [{ type: "text", text: "The CLI lives in d2e/." }], stop_reason: "end_turn" };
+      },
+    },
+  };
+  const prev = process.env.KB_ROOT;
+  process.env.KB_ROOT = root;
+  try {
+    const result = await answerQuestionRetrieval("v0.17 why does the CLI fail?", [], client);
+    assert.match(system, /KNOWLEDGE BASE INDEX \(snapshot: v0\.18\.0-beta\)/);
+    assert.match(result.text, /outside the supported range/);
+    assert.match(result.text, /v0\.17/);
+    assert.match(result.text, /The CLI lives in d2e/);
+    assert.equal(result.covered, true);
+  } finally {
+    if (prev === undefined) delete process.env.KB_ROOT;
+    else process.env.KB_ROOT = prev;
+  }
+});

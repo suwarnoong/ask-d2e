@@ -7,6 +7,8 @@ import type { AnthropicLikeClient } from "../../src/shared/anthropicLike.js";
 import { buildManifest, renderManifest } from "../../src/kb/manifest.js";
 import { scopeForSnapshot } from "../../src/kb/kbScope.js";
 import { loadFaq, renderFaqForPrompt } from "../../src/kb/faq.js";
+import { loadSnapshotRegistry } from "../../src/kb/snapshots.js";
+import { parseSnapshotOverride, resolveSnapshot } from "../../src/kb/versionRouting.js";
 import { runRetrievalLoop } from "./retrievalLoop.js";
 
 export function readAllRepoKbs(root: string = process.cwd() + "/knowledge-base"): KbFile[] {
@@ -149,20 +151,27 @@ export async function answerQuestion(
   const anthropic = client ?? (makeClient() as unknown as AnthropicLikeClient);
   const root = kbRoot();
 
+  const parsed = parseSnapshotOverride(question);
+  const resolution = resolveSnapshot({
+    requested: parsed.requested,
+    defaultId: snapshotId,
+    registry: loadSnapshotRegistry(root),
+  });
+
   const system = [
     ...(usingOauth ? [{ type: "text" as const, text: CLAUDE_CODE_IDENTITY }] : []),
     { type: "text" as const, text: INSTRUCTIONS },
     { type: "text" as const, text: faqText(root) },
     {
       type: "text" as const,
-      text: loadManifestText(root, snapshotId),
+      text: loadManifestText(root, resolution.snapshotId),
       cache_control: { type: "ephemeral" as const },
     },
   ];
 
   const messages = [
     ...history.map((t) => ({ role: t.role as string, content: t.text as unknown })),
-    { role: "user", content: question as unknown },
+    { role: "user", content: parsed.question as unknown },
   ];
 
   const outcome = await runRetrievalLoop({
@@ -171,14 +180,15 @@ export async function answerQuestion(
     maxTokens: Number(process.env.ANSWER_MAX_TOKENS ?? 4096),
     system,
     messages,
-    scope: scopeForSnapshot(root, snapshotId),
+    scope: scopeForSnapshot(root, resolution.snapshotId),
   });
 
   const match = outcome.text.match(NO_KB_MATCH_RE);
   const covered = !match;
-  const text = covered
+  const body = covered
     ? outcome.text
     : (outcome.text.slice(0, match.index) + outcome.text.slice(match.index! + match[0].length)).replace(/^\s+/, "");
+  const text = resolution.caveat ? `${resolution.caveat}\n\n${body}` : body;
 
   return { text, covered, filesRead: outcome.filesRead, truncated: outcome.truncated };
 }
