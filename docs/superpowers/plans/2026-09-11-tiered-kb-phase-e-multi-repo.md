@@ -1142,12 +1142,22 @@ Create `src/kb/buildSharedContract.test.ts`:
 ```typescript
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSharedContract } from "./buildSharedContract.js";
 
 const auth = { claudeOauthToken: "test-token", claudeModel: "test-model" };
+
+/** The prompt builder runs `git ls-files`, so the fake clone must produce a real checkout. */
+function fakeCheckout(dir: string): void {
+  mkdirSync(dir, { recursive: true });
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  writeFileSync(join(dir, "README.md"), "# WebAPI\n\nUpstream contract spec.");
+  execFileSync("git", ["add", "-A"], { cwd: dir });
+  execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"], { cwd: dir });
+}
 
 test("buildSharedContract writes the contract tier under repos/_shared", async () => {
   const kbRoot = mkdtempSync(join(tmpdir(), "kb-contract-"));
@@ -1156,7 +1166,7 @@ test("buildSharedContract writes the contract tier under repos/_shared", async (
     workRoot: mkdtempSync(join(tmpdir(), "work-")),
     auth,
     deps: {
-      clone: () => {},
+      clone: ({ dir }) => fakeCheckout(dir),
       callClaude: async () =>
         JSON.stringify({
           summary: "WebAPI contract KB",
@@ -1188,7 +1198,7 @@ test("buildSharedContract tells the model this is a contract, not an install", a
     workRoot: mkdtempSync(join(tmpdir(), "work-")),
     auth,
     deps: {
-      clone: () => {},
+      clone: ({ dir }) => fakeCheckout(dir),
       callClaude: async (p) => {
         prompt = p;
         return JSON.stringify({ summary: "s", changes: [] });
