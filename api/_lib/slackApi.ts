@@ -35,6 +35,8 @@ export function mapHistoryToTurns(
   return turns;
 }
 
+// JSON body — for "write" methods (chat.postMessage/update, reactions, conversations.open)
+// where nested fields like `blocks` must be real JSON objects.
 async function slackApiCall<T>(
   method: string,
   botToken: string,
@@ -47,6 +49,29 @@ async function slackApiCall<T>(
       authorization: `Bearer ${botToken}`,
     },
     body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as { ok: boolean; error?: string } & T;
+  if (!data.ok) throw new Error(`Slack API ${method} failed: ${data.error}`);
+  return data;
+}
+
+// Form-encoded — for "read" methods like conversations.history/replies, which IGNORE a JSON
+// body (they only read args from the query string / form body) and otherwise fail with
+// invalid_arguments "missing required field".
+async function slackApiForm<T>(
+  method: string,
+  botToken: string,
+  params: Record<string, string | number>,
+): Promise<T> {
+  const form = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) form.set(k, String(v));
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+      authorization: `Bearer ${botToken}`,
+    },
+    body: form.toString(),
   });
   const data = (await res.json()) as { ok: boolean; error?: string } & T;
   if (!data.ok) throw new Error(`Slack API ${method} failed: ${data.error}`);
@@ -99,7 +124,7 @@ export async function getThreadReplies(
   botUserId?: string,
   excludeTs?: string,
 ): Promise<Turn[]> {
-  const data = await slackApiCall<{ messages: SlackHistoryMessage[] }>("conversations.replies", botToken, {
+  const data = await slackApiForm<{ messages: SlackHistoryMessage[] }>("conversations.replies", botToken, {
     channel,
     ts: thread_ts,
     limit: 50,
@@ -108,7 +133,7 @@ export async function getThreadReplies(
 }
 
 export async function getDmHistory(botToken: string, channel: string, limit = 20): Promise<SlackHistoryMessage[]> {
-  const data = await slackApiCall<{ messages: SlackHistoryMessage[] }>("conversations.history", botToken, {
+  const data = await slackApiForm<{ messages: SlackHistoryMessage[] }>("conversations.history", botToken, {
     channel,
     limit,
   });
