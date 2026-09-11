@@ -48,11 +48,13 @@ export function classifyEvent(payload: SlackEventPayload, botUserId: string, isR
   if (event.type === "message") {
     if (event.subtype) return "ignored"; // edits, joins, deletes, etc. — not a user message
     if (event.channel_type === "im") return "dm_question"; // a DM is a direct question — no @mention needed
-    // An @mention also arrives as a message.* event; let the app_mention event handle it
-    // so we don't answer twice.
-    if ((event.text ?? "").includes(`<@${botUserId}>`)) return "ignored";
-    // Untagged reply inside an existing thread → candidate follow-up. processEvent confirms
-    // the bot actually participated in the thread before answering.
+    const text = event.text ?? "";
+    // Tags the bot → let the app_mention event handle it, so we don't answer twice.
+    if (text.includes(`<@${botUserId}>`)) return "ignored";
+    // Tags someone else (but not the bot) → the author is addressing that person, not us. Stay out.
+    if (/<@[^>]+>/.test(text)) return "ignored";
+    // Untagged reply inside an existing thread → candidate follow-up. processEvent confirms the
+    // bot participated AND that the author owns the thread before answering.
     if (event.thread_ts && event.thread_ts !== event.ts) return "thread_followup";
     return "ignored";
   }

@@ -141,6 +141,11 @@ async function main() {
 
   await scenario("untagged follow-up from the THREAD OWNER → answers in thread", ownerFollowUp, threadWithBot);
   await scenario("untagged reply from a NON-OWNER → ignored (they must @mention)", strangerFollowUp, threadWithBot);
+  await scenario(
+    "owner replies but @mentions ANOTHER person (not the bot) → ignored",
+    { type: "message", channel_type: "channel", user: "U1", channel: "C1", text: "<@UBOB> can you check this?", ts: "5", thread_ts: "1" },
+    threadWithBot,
+  );
   await scenario("untagged thread reply, bot NOT a participant → ignored", ownerFollowUp, threadNoBot);
   await scenario(
     "top-level channel message (not a thread) → ignored",

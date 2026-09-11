@@ -50,6 +50,11 @@ test("a threaded reply that @mentions the bot is left to the app_mention event (
   assert.equal(classifyEvent(payload, BOT, false), "ignored");
 });
 
+test("a threaded reply that @mentions someone else (not the bot) is ignored — it's addressed to them", () => {
+  const payload = { type: "event_callback", event: { type: "message", user: "U1", channel: "C1", channel_type: "channel", text: "<@UBOB> can you check this?", ts: "5", thread_ts: "1" } } as SlackEventPayload;
+  assert.equal(classifyEvent(payload, BOT, false), "ignored");
+});
+
 test("a message with a subtype (edit/join/bot) is ignored", () => {
   const payload = { type: "event_callback", event: { type: "message", subtype: "message_changed", channel: "C1", channel_type: "channel", text: "x", ts: "5", thread_ts: "1" } } as SlackEventPayload;
   assert.equal(classifyEvent(payload, BOT, false), "ignored");
