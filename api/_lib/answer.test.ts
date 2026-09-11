@@ -179,3 +179,73 @@ test("answerQuestion surfaces truncation from the retrieval loop", async () => {
     else process.env.RETRIEVAL_MAX_TURNS = prev;
   }
 });
+
+import { mkdtempSync as mkdtemp2, mkdirSync as mkdir2, writeFileSync as write2 } from "node:fs";
+
+function rootWithFaq(): string {
+  const root = mkdtemp2(join(tmpdir(), "answer-faq-"));
+  const dir = join(root, "curated", "faq");
+  mkdir2(dir, { recursive: true });
+  write2(
+    join(dir, "faq-03.md"),
+    [
+      "---",
+      "id: faq-03",
+      "question: What support does Data4Life provide?",
+      "owner: project-manager",
+      "lastReviewed: 2026-09-11",
+      "---",
+      "No 24/7 SLA. Community support only.",
+    ].join("\n"),
+  );
+  return root;
+}
+
+test("the curated FAQ is shipped whole in the system prompt", async () => {
+  const prev = process.env.KB_ROOT;
+  process.env.KB_ROOT = rootWithFaq();
+  let systemText = "";
+  const client = {
+    messages: {
+      create: async (...args: unknown[]): Promise<AnthropicLikeResponse> => {
+        const body = args[0] as { system: { text: string }[] };
+        systemText = body.system.map((s) => s.text).join("\n");
+        return { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" };
+      },
+    },
+  };
+
+  try {
+    await answerQuestionRetrieval("what support?", [], client);
+    assert.match(systemText, /CURATED FAQ \(TIER 1/);
+    assert.match(systemText, /No 24\/7 SLA\. Community support only\./);
+  } finally {
+    if (prev === undefined) delete process.env.KB_ROOT;
+    else process.env.KB_ROOT = prev;
+  }
+});
+
+test("the system prompt states tier precedence and the decline rule", async () => {
+  const prev = process.env.KB_ROOT;
+  process.env.KB_ROOT = rootWithFaq();
+  let systemText = "";
+  const client = {
+    messages: {
+      create: async (...args: unknown[]): Promise<AnthropicLikeResponse> => {
+        const body = args[0] as { system: { text: string }[] };
+        systemText = body.system.map((s) => s.text).join("\n");
+        return { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" };
+      },
+    },
+  };
+
+  try {
+    await answerQuestionRetrieval("anything", [], client);
+    assert.match(systemText, /TIER PRECEDENCE/);
+    assert.match(systemText, /decline/i);
+    assert.match(systemText, /contract specification/i);
+  } finally {
+    if (prev === undefined) delete process.env.KB_ROOT;
+    else process.env.KB_ROOT = prev;
+  }
+});

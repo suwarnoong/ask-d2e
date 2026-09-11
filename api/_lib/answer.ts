@@ -6,6 +6,7 @@ import type { Turn } from "./slackApi.js";
 import type { AnthropicLikeClient } from "../../src/shared/anthropicLike.js";
 import { buildManifest, renderManifest } from "../../src/kb/manifest.js";
 import { scopeForSnapshot } from "../../src/kb/kbScope.js";
+import { loadFaq, renderFaqForPrompt } from "../../src/kb/faq.js";
 import { runRetrievalLoop } from "./retrievalLoop.js";
 
 export function readAllRepoKbs(root: string = process.cwd() + "/knowledge-base"): KbFile[] {
@@ -46,6 +47,22 @@ Rules:
   correction should target, so do not paraphrase, shorten, or reformat it.
 - Never state a fact you have not read with your tools. The index lists titles and
   summaries only; read the file before relying on it.
+TIER PRECEDENCE — the knowledge base has three tiers of differing authority:
+- Tier 1, the curated FAQ (curated/faq/*.md): human-written and commercially reviewed.
+  For any question about legal terms, licensing, pricing, support commitments, SLAs, or
+  company policy, answer from tier 1 ONLY, staying close to its wording. If tier 1 does not
+  cover such a question, decline and say it needs a human — never infer the answer from
+  documentation or code, and never promise something tier 1 does not promise.
+- Tier 2, the official documentation (snapshots/<id>/docs/**): written by the maintainers.
+  For how-to, setup, configuration and troubleshooting questions about a running install,
+  tier 2 outranks tier 3. Quote its steps rather than reconstructing them.
+- Tier 3, the generated knowledge base (snapshots/<id>/generated/**): derived from source
+  code. Use it for how things work internally and for cross-component behaviour.
+- The OHDSI WebAPI material (repos/_shared/webapi-contract/**) is an upstream contract
+  specification that Data2Evidence reimplements in Deno. It is NOT shipped in a
+  Data2Evidence install. Always label it as contract specification, and never present it
+  as the behaviour of a running install.
+- When tiers disagree, say so and cite both. Do not silently pick one.
 Slack formatting (Slack mrkdwn, NOT GitHub Markdown): *single asterisks* for bold, no #
 headings, no **double asterisks**; backticks for code; bullet with a leading dash.
 `.trim();
@@ -73,6 +90,23 @@ function kbRoot(): string {
 }
 
 const manifestCache = new Map<string, string>();
+
+const faqCache = new Map<string, string>();
+
+function faqText(root: string): string {
+  const cached = faqCache.get(root);
+  if (cached !== undefined) return cached;
+  let text: string;
+  try {
+    text = renderFaqForPrompt(loadFaq(root));
+  } catch (err) {
+    // A malformed curated file must be loud, but must not take the bot down.
+    console.error(`Failed to load curated FAQ from ${root}: ${(err as Error).message}`);
+    text = renderFaqForPrompt([]);
+  }
+  faqCache.set(root, text);
+  return text;
+}
 
 /**
  * Manifest text for a snapshot. Prefers a prebuilt snapshots/<id>/manifest.json;
@@ -118,6 +152,7 @@ export async function answerQuestion(
   const system = [
     ...(usingOauth ? [{ type: "text" as const, text: CLAUDE_CODE_IDENTITY }] : []),
     { type: "text" as const, text: INSTRUCTIONS },
+    { type: "text" as const, text: faqText(root) },
     {
       type: "text" as const,
       text: loadManifestText(root, snapshotId),
