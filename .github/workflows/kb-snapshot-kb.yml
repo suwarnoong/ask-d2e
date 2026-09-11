@@ -1,0 +1,134 @@
+name: KB Snapshot Generated Tier
+
+# Builds the tier-3 (generated) knowledge for one snapshot: Data2Evidence, Atlas3 and trex at the
+# refs that snapshot pins, plus optionally the version-independent WebAPI contract tier.
+#
+# This is the step that needs the Claude Code CLI and CLAUDE_CODE_OAUTH_TOKEN, so it runs here
+# rather than on anyone's laptop. Release snapshots are immutable: run it once per release tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_id:
+        description: "Snapshot to generate, e.g. develop or v0.18.1-beta"
+        required: true
+      d2e_ref:
+        description: "Data2Evidence ref to build the docs tier from (defaults to snapshot_id)"
+        required: false
+        default: ""
+      build_docs:
+        description: "Also build the tier-2 docs tier and register the snapshot (first-time builds)"
+        type: boolean
+        default: false
+      build_shared_contract:
+        description: "Also (re)build the shared WebAPI contract tier"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      snapshot_id:
+        required: true
+        type: string
+      d2e_ref:
+        required: false
+        type: string
+        default: ""
+      build_docs:
+        required: false
+        type: boolean
+        default: false
+      build_shared_contract:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+      KB_REPO_TOKEN:
+        required: true
+      SOURCE_REPOS_TOKEN:
+        required: true
+
+permissions:
+  contents: write
+
+# Both this job and kb-refresh.yml commit to ask-d2e-kb; never let them overlap.
+concurrency:
+  group: kb-refresh
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    # Job-level so the step's `if` can test it (secrets are not readable directly in `if`).
+    env:
+      DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+    steps:
+      - name: Checkout ask-d2e
+        uses: actions/checkout@v4
+
+      - name: Checkout ask-d2e-kb
+        uses: actions/checkout@v4
+        with:
+          repository: suwarnoong/ask-d2e-kb
+          token: ${{ secrets.KB_REPO_TOKEN }}
+          path: kb
+
+      # Only needed when this run also builds the docs tier / registers the snapshot.
+      - name: Checkout Data2Evidence at the snapshot ref
+        if: inputs.build_docs
+        uses: actions/checkout@v4
+        with:
+          repository: OHDSI/Data2Evidence
+          ref: ${{ inputs.d2e_ref || inputs.snapshot_id }}
+          token: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          path: d2e-src
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm install -g @anthropic-ai/claude-code
+
+      - name: Build the docs tier and register the snapshot
+        if: inputs.build_docs
+        run: npm run kb-build-snapshot
+        env:
+          D2E_ROOT: ${{ github.workspace }}/d2e-src
+          KB_ROOT: ${{ github.workspace }}/kb
+          SNAPSHOT_ID: ${{ inputs.snapshot_id }}
+          D2E_TAG: ${{ inputs.d2e_ref || inputs.snapshot_id }}
+          IS_DEVELOP: ${{ inputs.snapshot_id == 'develop' }}
+
+      # Clones Atlas3/trex at the snapshot's pinned commits and generates each repo's KB.
+      # A clone or generation failure writes nothing — see buildSnapshotKb's collect-then-write.
+      - name: Generate the snapshot's repo knowledge bases
+        run: npm run kb-build-snapshot-kb
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SOURCE_REPOS_TOKEN: ${{ secrets.SOURCE_REPOS_TOKEN }}
+          KB_ROOT: ${{ github.workspace }}/kb
+          SNAPSHOT_ID: ${{ inputs.snapshot_id }}
+          WORK_ROOT: ${{ runner.temp }}/snapshot-src
+          BUILD_SHARED_CONTRACT: ${{ inputs.build_shared_contract }}
+          SNAPSHOT_KB_MODEL: ${{ vars.SNAPSHOT_KB_MODEL }}
+          CLAUDE_TIMEOUT_MS: "900000"
+
+      - name: Commit and push the KB repo
+        working-directory: kb
+        run: |
+          set -euo pipefail
+          git config user.name "ask-d2e"
+          git config user.email "actions@github.com"
+          git add snapshots.json snapshots
+          if git diff --cached --quiet; then
+            echo "No KB changes to commit."
+            exit 0
+          fi
+          git commit -m "docs(kb): generated tiers for ${{ inputs.snapshot_id }}"
+          git push origin HEAD:main
+
+      - name: Trigger a deploy
+        if: env.DEPLOY_HOOK_URL != ''
+        run: curl -fsS -X POST "$DEPLOY_HOOK_URL"
