@@ -24,6 +24,10 @@ on:
         description: "Also (re)build the shared WebAPI contract tier"
         type: boolean
         default: false
+      repos:
+        description: "Comma-separated subset to generate (default all three)"
+        required: false
+        default: "d2e,atlas3,trex"
   workflow_call:
     inputs:
       snapshot_id:
@@ -41,6 +45,10 @@ on:
         required: false
         type: boolean
         default: false
+      repos:
+        required: false
+        type: string
+        default: "d2e,atlas3,trex"
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
@@ -111,9 +119,11 @@ jobs:
           KB_ROOT: ${{ github.workspace }}/kb
           SNAPSHOT_ID: ${{ inputs.snapshot_id }}
           WORK_ROOT: ${{ runner.temp }}/snapshot-src
+          # A full Data2Evidence generation can exceed 15 minutes; each repo gets 45.
+          KB_REPOS: ${{ inputs.repos }}
           BUILD_SHARED_CONTRACT: ${{ inputs.build_shared_contract }}
           SNAPSHOT_KB_MODEL: ${{ vars.SNAPSHOT_KB_MODEL }}
-          CLAUDE_TIMEOUT_MS: "900000"
+          CLAUDE_TIMEOUT_MS: "2700000"
 
       - name: Commit and push the KB repo
         working-directory: kb

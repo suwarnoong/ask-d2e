@@ -98,3 +98,14 @@ test("generateRepoKb surfaces a model failure rather than returning an empty pla
     generateRepoKb({ ...options(makeRepo()), callClaude: async () => "not json at all" }),
   );
 });
+
+test("buildRepoPrompt caps the file list it hands the model", () => {
+  const dir = makeRepo();
+  for (const name of ["aaa.ts", "bbb.ts", "ccc.ts"]) writeFileSync(join(dir, name), "export {};\n");
+  execFileSync("git", ["add", "-A"], { cwd: dir });
+  execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "more"], { cwd: dir });
+
+  const prompt = buildRepoPrompt({ ...options(dir), fileCap: 2, callClaude: async () => "" });
+
+  assert.match(prompt, /truncated: showing the first 2 of/);
+});

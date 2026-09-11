@@ -42,6 +42,7 @@ export async function buildSharedContract(
         "Describe it as a contract, never as the behaviour of a running Data2Evidence install.",
     },
     auth: input.auth,
+    fileCap: 350,
     callClaude: input.deps?.callClaude,
   });
 

@@ -103,3 +103,14 @@ test("generated citations resolve back to their repo", async () => {
     "trex",
   );
 });
+
+test("buildSnapshotKb can be scoped to a subset of repos", async () => {
+  const kbRoot = mkdtempSync(join(tmpdir(), "kb-subset-"));
+  const input = makeInput(kbRoot, mkdtempSync(join(tmpdir(), "work-")), { repos: ["trex"] });
+
+  const result = await buildSnapshotKb(input);
+
+  assert.deepEqual(result.repos.map((r) => r.repoName), ["trex"]);
+  assert.ok(readFileSync(join(kbRoot, "snapshots/develop/generated/trex/00-overview/intro.md"), "utf8"));
+  assert.throws(() => readFileSync(join(kbRoot, "snapshots/develop/generated/atlas3/00-overview/intro.md")));
+});

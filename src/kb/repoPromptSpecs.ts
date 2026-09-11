@@ -3,13 +3,15 @@ import type { PromptSpec } from "./registry.js";
 export interface GeneratedRepo {
   name: "d2e" | "atlas3" | "trex";
   sourceRepo: string;
+  /** Prompt file-list cap; smaller keeps a large monorepo's generation inside the CLI timeout. */
+  fileCap: number;
 }
 
 /** The three repos that make up an install, in generation order. */
 export const GENERATED_REPOS: GeneratedRepo[] = [
-  { name: "d2e", sourceRepo: "OHDSI/Data2Evidence" },
-  { name: "atlas3", sourceRepo: "OHDSI/Atlas3" },
-  { name: "trex", sourceRepo: "OHDSI/trex" },
+  { name: "d2e", sourceRepo: "OHDSI/Data2Evidence", fileCap: 500 },
+  { name: "atlas3", sourceRepo: "OHDSI/Atlas3", fileCap: 350 },
+  { name: "trex", sourceRepo: "OHDSI/trex", fileCap: 350 },
 ];
 
 /**

@@ -24,16 +24,20 @@ export interface GenerateRepoKbOptions {
   promptSpec: PromptSpec;
   target: PromptTarget;
   auth: ClaudeAuth;
+  /** Cap on how many source paths are listed in the prompt. Larger repos take longer to explore. */
+  fileCap?: number;
   callClaude?: ClaudeCaller;
 }
 
 export function buildRepoPrompt(options: GenerateRepoKbOptions): string {
-  const allFiles = listSourceFiles(options.sourceDir);
+  // List everything so the prompt can say how much it is not showing, then cap what it shows.
+  const allFiles = listSourceFiles(options.sourceDir, Number.MAX_SAFE_INTEGER);
+  const shown = allFiles.slice(0, options.fileCap ?? 500);
   return buildInitialBuildPrompt(
     options.sourceRepo,
     options.repoName,
     options.promptSpec,
-    allFiles,
+    shown,
     readReadmes(options.sourceDir),
     allFiles.length,
     options.target,

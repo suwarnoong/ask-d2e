@@ -20,7 +20,19 @@ const refs = {
   trex: entry.pins.trex,
 };
 
-const result = await buildSnapshotKb({ kbRoot, snapshotId, refs, auth, workRoot });
+const repos = optional("KB_REPOS", "")
+  .split(",")
+  .map((r) => r.trim())
+  .filter(Boolean) as ("d2e" | "atlas3" | "trex")[];
+
+const result = await buildSnapshotKb({
+  kbRoot,
+  snapshotId,
+  refs,
+  auth,
+  workRoot,
+  ...(repos.length > 0 ? { repos } : {}),
+});
 console.log(`Generated ${result.repos.map((r) => `${r.repoName}=${r.files}`).join(" ")}`);
 console.log(`Manifest now indexes ${result.manifestEntries} files`);
 
