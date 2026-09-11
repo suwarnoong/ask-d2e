@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readAllRepoKbs, renderKbForPrompt, answerQuestion } from "../../api/_lib/answer.js";
+import { readAllRepoKbs, answerQuestion } from "../../api/_lib/answer.js";
 import { resolveRepoFromCitation } from "./repoResolution.js";
 import { decideSelfHealAction } from "../../api/_lib/selfHeal.js";
 import type { RegistryEntry } from "./registry.js";
@@ -36,10 +36,9 @@ function makeFixtureRoot(): { root: string; registry: RegistryEntry[] } {
 }
 
 test("covered answer round-trips a parseable citation that resolveRepoFromCitation extracts", async () => {
-  const { root, registry } = makeFixtureRoot();
+  const { root } = makeFixtureRoot();
   const files = readAllRepoKbs(root);
-  const rendered = renderKbForPrompt(files, registry);
-  assert.ok(rendered.includes("repos/widgets/knowledge-base/00-overview/intro.md"));
+  assert.ok(files.some((f) => f.path === "repos/widgets/knowledge-base/00-overview/intro.md"));
 
   const stubClient = {
     messages: {

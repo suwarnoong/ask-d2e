@@ -1,10 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { readRepoKb, renderKb, type KbFile } from "../../src/kb/kbFiles.js";
-import { loadRegistry, type RegistryEntry } from "../../src/kb/registry.js";
+import { readRepoKb, type KbFile } from "../../src/kb/kbFiles.js";
 import type { Turn } from "./slackApi.js";
 import type { AnthropicLikeClient } from "../../src/shared/anthropicLike.js";
+import { buildManifest, renderManifest } from "../../src/kb/manifest.js";
+import { scopeForSnapshot } from "../../src/kb/kbScope.js";
+import { runRetrievalLoop } from "./retrievalLoop.js";
 
 export function readAllRepoKbs(root: string = process.cwd() + "/knowledge-base"): KbFile[] {
   let names: string[];
@@ -16,18 +18,6 @@ export function readAllRepoKbs(root: string = process.cwd() + "/knowledge-base")
     return [];
   }
   return names.flatMap((name) => readRepoKb(root, name));
-}
-
-export function renderKbForPrompt(files: KbFile[], registry: RegistryEntry[], budget?: number): string {
-  const scaledBudget = budget ?? Math.max(600_000, 150_000 * registry.length);
-  const index = registry
-    .map((e) => `- ${e.name} (${e.sourceRepo}): ${e.promptSpec.audience}`)
-    .join("\n");
-  const body = renderKb(files, scaledBudget);
-  if (body.startsWith("WARNING:")) {
-    console.warn(`renderKbForPrompt: over budget (${scaledBudget}) across ${registry.length} repo(s) — falling back to index-only.`);
-  }
-  return `Configured repos:\n${index}\n\n${body}`;
 }
 
 export const CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
@@ -50,10 +40,12 @@ Rules:
   fully answers it, give exactly that and stop.
 - Use a bullet list ONLY when the question explicitly asks for steps, options, or a list of
   things. Otherwise answer in prose. Never open with a preamble or close with a summary.
-- Cite the EXACT source path(s) you used at the end, formatted exactly as they appear
-  (e.g. "repos/acme-widgets/03-cloud-functions/query-generation-service.md") — this exact
-  string is later parsed to resolve which repo a correction should target, so do not
-  paraphrase or shorten it.
+- Cite the EXACT source path(s) you read, formatted exactly as the index shows them
+  (e.g. "snapshots/develop/docs/2-admin_guide/5-setup/0-system-setup/cli.md" or
+  "curated/faq/faq-03.md") — this exact string is later parsed to resolve which source a
+  correction should target, so do not paraphrase, shorten, or reformat it.
+- Never state a fact you have not read with your tools. The index lists titles and
+  summaries only; read the file before relying on it.
 Slack formatting (Slack mrkdwn, NOT GitHub Markdown): *single asterisks* for bold, no #
 headings, no **double asterisks**; backticks for code; bullet with a leading dash.
 `.trim();
@@ -74,60 +66,84 @@ export function makeClient(): Anthropic {
   throw new Error("Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set.");
 }
 
+export const DEFAULT_SNAPSHOT_ID = process.env.DEFAULT_SNAPSHOT_ID ?? "develop";
+
+function kbRoot(): string {
+  return process.env.KB_ROOT ?? process.cwd() + "/knowledge-base";
+}
+
+const manifestCache = new Map<string, string>();
+
+/**
+ * Manifest text for a snapshot. Prefers a prebuilt snapshots/<id>/manifest.json;
+ * falls back to building one from whatever repo KBs are on disk, so this works
+ * before phase C creates real snapshots.
+ */
+export function loadManifestText(root: string, snapshotId: string): string {
+  const cacheKey = `${root}::${snapshotId}`;
+  const cached = manifestCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  let text: string;
+  try {
+    const raw = readFileSync(join(root, "snapshots", snapshotId, "manifest.json"), "utf8");
+    text = renderManifest(JSON.parse(raw));
+  } catch {
+    const files = readAllRepoKbs(root);
+    text = renderManifest(
+      buildManifest(snapshotId, files, (f) => f.content.slice(0, 140).replace(/\s+/g, " ").trim()),
+    );
+  }
+  manifestCache.set(cacheKey, text);
+  return text;
+}
+
 export interface AnswerResult {
   text: string;
   covered: boolean;
-}
-
-let cachedKbText: string | undefined;
-
-function kbText(): string {
-  if (cachedKbText === undefined) {
-    const root = process.cwd() + "/knowledge-base";
-    const files = readAllRepoKbs(root);
-    const registry = (() => {
-      try {
-        return loadRegistry(root);
-      } catch {
-        return [];
-      }
-    })();
-    cachedKbText = renderKbForPrompt(files, registry);
-  }
-  return cachedKbText;
+  filesRead: string[];
+  truncated: boolean;
 }
 
 export async function answerQuestion(
   question: string,
   history: Turn[] = [],
   client?: AnthropicLikeClient,
+  snapshotId: string = DEFAULT_SNAPSHOT_ID,
 ): Promise<AnswerResult> {
   const usingOauth = Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN);
   const anthropic = client ?? (makeClient() as unknown as AnthropicLikeClient);
+  const root = kbRoot();
 
   const system = [
     ...(usingOauth ? [{ type: "text" as const, text: CLAUDE_CODE_IDENTITY }] : []),
     { type: "text" as const, text: INSTRUCTIONS },
-    { type: "text" as const, text: kbText(), cache_control: { type: "ephemeral" as const } },
+    {
+      type: "text" as const,
+      text: loadManifestText(root, snapshotId),
+      cache_control: { type: "ephemeral" as const },
+    },
   ];
 
   const messages = [
-    ...history.map((t) => ({ role: t.role, content: t.text })),
-    { role: "user" as const, content: question },
+    ...history.map((t) => ({ role: t.role as string, content: t.text as unknown })),
+    { role: "user", content: question as unknown },
   ];
 
-  const response = await anthropic.messages.create({
+  const outcome = await runRetrievalLoop({
+    client: anthropic,
     model: process.env.ANSWER_MODEL ?? process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5",
-    max_tokens: Number(process.env.ANSWER_MAX_TOKENS ?? 4096),
+    maxTokens: Number(process.env.ANSWER_MAX_TOKENS ?? 4096),
     system,
     messages,
+    scope: scopeForSnapshot(root, snapshotId),
   });
 
-  const rawText = response.content.find((b) => b.type === "text")?.text ?? "";
-  const match = rawText.match(NO_KB_MATCH_RE);
+  const match = outcome.text.match(NO_KB_MATCH_RE);
   const covered = !match;
   const text = covered
-    ? rawText
-    : (rawText.slice(0, match.index) + rawText.slice(match.index! + match[0].length)).replace(/^\s+/, "");
-  return { text, covered };
+    ? outcome.text
+    : (outcome.text.slice(0, match.index) + outcome.text.slice(match.index! + match[0].length)).replace(/^\s+/, "");
+
+  return { text, covered, filesRead: outcome.filesRead, truncated: outcome.truncated };
 }

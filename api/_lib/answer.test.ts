@@ -3,22 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readAllRepoKbs, renderKbForPrompt, answerQuestion, NO_KB_MATCH } from "./answer.js";
-import type { RegistryEntry } from "../../src/kb/registry.js";
-
-function fixtureEntry(name: string): RegistryEntry {
-  return {
-    name,
-    sourceRepo: `acme/${name}`,
-    promptSpec: { audience: "engineers", exampleQuestions: [], focusAreas: [], scopeNotes: "" },
-    cadence: "weekly",
-    status: "active",
-    createdBy: "U1",
-    createdAt: "2026-01-01T00:00:00Z",
-    lastRefreshedAt: null,
-    lastAutoRefreshAt: null,
-  };
-}
+import { readAllRepoKbs, answerQuestion, NO_KB_MATCH } from "./answer.js";
 
 function makeFixtureRoot(repoNames: string[]): string {
   const root = mkdtempSync(join(tmpdir(), "answer-root-"));
@@ -38,25 +23,6 @@ test("readAllRepoKbs walks every configured repo's kb folder", () => {
     "repos/gadgets/knowledge-base/00-overview/intro.md",
     "repos/widgets/knowledge-base/00-overview/intro.md",
   ]);
-});
-
-test("renderKbForPrompt forces the index-only fallback over a small forced budget with >=2 repos", () => {
-  const root = makeFixtureRoot(["widgets", "gadgets"]);
-  const files = readAllRepoKbs(root);
-  const registry = [fixtureEntry("widgets"), fixtureEntry("gadgets")];
-  const rendered = renderKbForPrompt(files, registry, 10);
-  assert.ok(rendered.includes("widgets"));
-  assert.ok(rendered.includes("gadgets"));
-  assert.ok(!rendered.includes("Some content about widgets"));
-});
-
-test("renderKbForPrompt includes a repo index for meta-questions", () => {
-  const root = makeFixtureRoot(["widgets"]);
-  const files = readAllRepoKbs(root);
-  const registry = [fixtureEntry("widgets")];
-  const rendered = renderKbForPrompt(files, registry);
-  assert.ok(rendered.includes("widgets"));
-  assert.ok(rendered.includes("engineers"));
 });
 
 test("answerQuestion returns covered=true for a normal answer", async () => {
@@ -125,4 +91,91 @@ test("answerQuestion strips NO_KB_MATCH even when the model doesn't lead with it
   assert.ok(!result.text.includes("NO_KB_MATCH"));
   assert.ok(result.text.includes("Based on the knowledge base:"));
   assert.ok(result.text.includes("The docs don't cover HANA"));
+});
+
+import { answerQuestion as answerQuestionRetrieval } from "./answer.js";
+import type { AnthropicLikeResponse } from "../../src/shared/anthropicLike.js";
+
+test("answerQuestion declares the KB tools and returns the model's text", async () => {
+  const calls: Record<string, unknown>[] = [];
+  const client = {
+    messages: {
+      create: async (...args: unknown[]): Promise<AnthropicLikeResponse> => {
+        calls.push(args[0] as Record<string, unknown>);
+        return { content: [{ type: "text", text: "Use the CLI." }], stop_reason: "end_turn" };
+      },
+    },
+  };
+
+  const result = await answerQuestionRetrieval("how?", [], client);
+
+  assert.equal(result.text, "Use the CLI.");
+  assert.equal(result.covered, true);
+  assert.deepEqual(result.filesRead, []);
+  assert.equal(result.truncated, false);
+  assert.ok(Array.isArray(calls[0].tools), "tools must be declared");
+});
+
+test("answerQuestion puts the manifest in the system prompt, not the KB body", async () => {
+  let systemText = "";
+  const client = {
+    messages: {
+      create: async (...args: unknown[]): Promise<AnthropicLikeResponse> => {
+        const body = args[0] as { system: { text: string }[] };
+        systemText = body.system.map((s) => s.text).join("\n");
+        return { content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" };
+      },
+    },
+  };
+
+  await answerQuestionRetrieval("how?", [], client);
+
+  assert.match(systemText, /KNOWLEDGE BASE INDEX/);
+  assert.doesNotMatch(systemText, /===== FILE:/);
+});
+
+test("answerQuestion still strips the NO_KB_MATCH sentinel", async () => {
+  const client = {
+    messages: {
+      create: async (): Promise<AnthropicLikeResponse> => ({
+        content: [{ type: "text", text: `${NO_KB_MATCH}\nNot covered here.` }],
+        stop_reason: "end_turn",
+      }),
+    },
+  };
+
+  const result = await answerQuestionRetrieval("what?", [], client);
+
+  assert.equal(result.covered, false);
+  assert.equal(result.text, "Not covered here.");
+  assert.doesNotMatch(result.text, /NO_KB_MATCH/);
+});
+
+test("answerQuestion surfaces truncation from the retrieval loop", async () => {
+  let call = 0;
+  const client = {
+    messages: {
+      create: async (): Promise<AnthropicLikeResponse> => {
+        call++;
+        if (call === 1) {
+          return {
+            content: [{ type: "tool_use", id: "t", name: "list_kb_dir", input: { path: "curated" } }],
+            stop_reason: "tool_use",
+          };
+        }
+        return { content: [{ type: "text", text: "Partial." }], stop_reason: "end_turn" };
+      },
+    },
+  };
+
+  const prev = process.env.RETRIEVAL_MAX_TURNS;
+  process.env.RETRIEVAL_MAX_TURNS = "1";
+  try {
+    const result = await answerQuestionRetrieval("what?", [], client);
+    assert.equal(result.truncated, true);
+    assert.equal(result.text, "Partial.");
+  } finally {
+    if (prev === undefined) delete process.env.RETRIEVAL_MAX_TURNS;
+    else process.env.RETRIEVAL_MAX_TURNS = prev;
+  }
 });
