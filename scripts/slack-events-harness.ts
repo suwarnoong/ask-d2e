@@ -45,6 +45,8 @@ function installStub(thread: Array<{ user?: string; bot_id?: string; text: strin
 
     if (u.includes("slack.com/api/auth.test")) return json({ ok: true, user_id: BOT_USER });
     if (u.includes("slack.com/api/conversations.replies")) return json({ ok: true, messages: thread });
+    // conversations.history is newest-first in real Slack; return reversed so the harness mirrors it.
+    if (u.includes("slack.com/api/conversations.history")) return json({ ok: true, messages: [...thread].reverse() });
     if (u.includes("slack.com/api/")) return json({ ok: true, ts: "1700000000.000900" });
     if (u.includes("api.anthropic.com")) {
       return json({
@@ -146,6 +148,16 @@ async function main() {
     "bot's own message echoed back → ignored (loop guard)",
     { type: "message", channel_type: "channel", bot_id: "B1", channel: "C1", text: "Trex is...", ts: "6", thread_ts: "1" },
     threadWithBot,
+  );
+  // DM: a plain message with no @mention should be answered directly (no thread).
+  await scenario(
+    "DM to the bot (no @mention needed) → answers directly",
+    { type: "message", channel_type: "im", user: "U1", channel: "D1", text: "what is trex?", ts: "9" },
+    [
+      { user: "U1", text: "hi", ts: "7" },
+      { bot_id: "B1", text: "Hello!", ts: "8" },
+      { user: "U1", text: "what is trex?", ts: "9" },
+    ],
   );
 }
 

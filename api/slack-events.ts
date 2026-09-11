@@ -1,8 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { waitUntil } from "@vercel/functions";
-import { verifySlackSignature, isAdmin } from "../src/shared/slackAuth.js";
-import { getThreadReplies, getDmHistory, getBotUserId, postMessage, stripMention, type Turn } from "./_lib/slackApi.js";
-import { applyWizardTurn } from "../src/admin/wizard/addRepoWizard.js";
+import { verifySlackSignature } from "../src/shared/slackAuth.js";
+import { getThreadReplies, getDmHistory, getBotUserId, postMessage, stripMention, mapHistoryToTurns, type Turn } from "./_lib/slackApi.js";
 import { answerQuestion } from "./_lib/answer.js";
 import { buildAnswerBlocks } from "./ask.js";
 import { maybeStartSelfHeal } from "./_lib/selfHeal.js";
@@ -34,7 +33,7 @@ export type EventClassification =
   | "url_verification"
   | "retry"
   | "self"
-  | "wizard_turn"
+  | "dm_question"
   | "app_mention"
   | "thread_followup"
   | "ignored";
@@ -51,7 +50,7 @@ export function classifyEvent(payload: SlackEventPayload, botUserId: string, isR
 
   if (event.type === "message") {
     if (event.subtype) return "ignored"; // edits, joins, deletes, etc. — not a user message
-    if (event.channel_type === "im") return "wizard_turn";
+    if (event.channel_type === "im") return "dm_question"; // a DM is a direct question — no @mention needed
     // An @mention also arrives as a message.* event; let the app_mention event handle it
     // so we don't answer twice.
     if ((event.text ?? "").includes(`<@${botUserId}>`)) return "ignored";
@@ -109,30 +108,19 @@ async function processEvent(
   console.log(`slack-events: classification=${classification} user=${event.user} channel=${event.channel} subtype=${(event as { subtype?: string }).subtype ?? "none"}`);
 
   try {
-    if (classification === "wizard_turn") {
-      if (!isAdmin(event.user)) {
-        console.log(`wizard_turn ignored: user "${event.user}" is not in KB_FEEDBACK_ADMIN_IDS`);
-        return;
+    if (classification === "dm_question") {
+      // A DM is a direct question — no @mention needed. Use recent DM history as context.
+      const question = stripMention(event.text ?? "", botUserId);
+      const threadTs = event.thread_ts && event.thread_ts !== event.ts ? event.thread_ts : undefined;
+      let history: Turn[];
+      if (threadTs) {
+        history = await getThreadReplies(botToken, event.channel!, threadTs, botUserId, event.ts);
+      } else {
+        // conversations.history is newest-first — reverse to chronological, drop the current msg.
+        const recent = await getDmHistory(botToken, event.channel!, 20);
+        history = mapHistoryToTurns([...recent].reverse(), botUserId, event.ts);
       }
-      const history = await getDmHistory(botToken, event.channel!);
-      console.log(`wizard_turn: fetched ${history.length} DM history message(s)`);
-      const result = await applyWizardTurn(history, event.text ?? "", event.user!);
-      if (!result) {
-        console.log("wizard_turn: applyWizardTurn found no active state — nothing to reply to");
-        return;
-      }
-      await postMessage({ botToken, channel: event.channel!, text: result.reply });
-      if (result.dispatch) {
-        await fetch("https://api.github.com/repos/suwarnoong/ask-d2e/actions/workflows/kb-initial-build.yml/dispatches", {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${process.env.GITHUB_DISPATCH_TOKEN}`,
-            accept: "application/vnd.github+json",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify(result.dispatch),
-        });
-      }
+      await answerInThread(botToken, event.channel!, question, history, threadTs);
       return;
     }
 
@@ -143,7 +131,7 @@ async function processEvent(
       const history = isFollowUp
         ? await getThreadReplies(botToken, event.channel!, threadTs, botUserId, event.ts)
         : [];
-      await answerInThread(botToken, event.channel!, threadTs, question, history);
+      await answerInThread(botToken, event.channel!, question, history, threadTs);
       return;
     }
 
@@ -157,7 +145,7 @@ async function processEvent(
         return;
       }
       const question = stripMention(event.text ?? "", botUserId);
-      await answerInThread(botToken, event.channel!, threadTs, question, history);
+      await answerInThread(botToken, event.channel!, question, history, threadTs);
       return;
     }
   } catch (err) {
@@ -174,14 +162,15 @@ async function processEvent(
   }
 }
 
-// Shared answer flow for both @mentions and untagged thread follow-ups: ack, answer with the
-// thread's prior turns as context, post in-thread, and self-heal only on a genuine miss.
+// Shared answer flow for @mentions, untagged thread follow-ups, and DMs: ack, answer with prior
+// turns as context, post the answer, and self-heal only on a genuine miss. threadTs is omitted
+// for flat DMs (reply inline) and set for channel threads (reply in-thread).
 async function answerInThread(
   botToken: string,
   channel: string,
-  threadTs: string,
   question: string,
   history: Turn[],
+  threadTs?: string,
 ): Promise<void> {
   await postMessage({ botToken, channel, text: "Looking that up...", thread_ts: threadTs });
 

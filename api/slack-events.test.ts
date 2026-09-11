@@ -19,12 +19,12 @@ test("classifies an event from the bot itself as self", () => {
   assert.equal(classifyEvent(payload, BOT, false), "self");
 });
 
-test("classifies a DM message from an admin as a wizard_turn candidate", () => {
-  const payload = { type: "event_callback", event: { type: "message", user: "UADMIN", channel: "D1", text: "hi", ts: "1", channel_type: "im" } } as SlackEventPayload;
-  assert.equal(classifyEvent(payload, BOT, false), "wizard_turn");
+test("classifies a DM message as a direct question (no @mention needed)", () => {
+  const payload = { type: "event_callback", event: { type: "message", user: "U1", channel: "D1", text: "what is trex?", ts: "1", channel_type: "im" } } as SlackEventPayload;
+  assert.equal(classifyEvent(payload, BOT, false), "dm_question");
 });
 
-test("classifies an app_mention as app_mention, not colliding with the DM wizard branch", () => {
+test("classifies an app_mention as app_mention, not colliding with the DM branch", () => {
   const payload = { type: "event_callback", event: { type: "app_mention", user: "U1", channel: "C1", text: `<@${BOT}> hi`, ts: "1" } } as SlackEventPayload;
   assert.equal(classifyEvent(payload, BOT, false), "app_mention");
 });
