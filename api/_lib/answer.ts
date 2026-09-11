@@ -49,10 +49,12 @@ Rules:
   fully answers it, give exactly that and stop.
 - Use a bullet list ONLY when the question explicitly asks for steps, options, or a list of
   things. Otherwise answer in prose. Never open with a preamble or close with a summary.
-- Cite the EXACT source path(s) you read, formatted exactly as the index shows them
-  (e.g. "snapshots/develop/docs/2-admin_guide/5-setup/0-system-setup/cli.md" or
-  "curated/faq/faq-03.md") — this exact string is later parsed to resolve which source a
-  correction should target, so do not paraphrase, shorten, or reformat it.
+- Cite the EXACT source path(s) you read, each wrapped in its own backticks and written
+  exactly as the index shows it — e.g. \`snapshots/develop/docs/2-admin_guide/5-setup/0-system-setup/cli.md\`
+  or \`curated/faq/faq-03.md\`. If you used more than one, give each its own backticks
+  (\`path-a.md\` and \`path-b.md\`), never a single span around a comma-separated list. The
+  path inside the backticks is later parsed to resolve which source a correction should
+  target, so keep it exact — do not paraphrase, shorten, or reformat the path itself.
 - Never state a fact you have not read with your tools. The index lists titles and
   summaries only; read the file before relying on it.
 TIER PRECEDENCE — the knowledge base has three tiers of differing authority:
