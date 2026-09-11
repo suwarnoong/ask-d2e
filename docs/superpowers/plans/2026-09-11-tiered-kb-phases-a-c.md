@@ -1263,6 +1263,7 @@ git commit -m "feat(api): bounded agentic retrieval loop over the knowledge base
 **Files:**
 - Modify: `api/_lib/answer.ts`
 - Modify: `api/_lib/answer.test.ts`
+- Modify: `src/kb/phase3.e2e.test.ts` (it imports `renderKbForPrompt`, which this task removes)
 
 **Interfaces:**
 - Consumes: `runRetrievalLoop`, `RetrievalOutcome` from `./retrievalLoop.js`; `buildManifest`, `renderManifest` from `../../src/kb/manifest.js`; `scopeForSnapshot` from `../../src/kb/kbScope.js`
@@ -1377,6 +1378,15 @@ test("answerQuestion surfaces truncation from the retrieval loop", async () => {
 ```
 
 Also **delete** the two existing tests that assert on `renderKbForPrompt`'s budget behaviour (`"renderKbForPrompt forces the index-only fallback…"` and any sibling asserting `===== FILE:` rendering), since that function is being removed. Keep the `readAllRepoKbs` tests — that function stays.
+
+Also update `src/kb/phase3.e2e.test.ts`, which imports and calls `renderKbForPrompt` in its first test. Drop that name from the import, and replace the rendered-body assertion with the same check against the files on disk:
+
+```typescript
+  const files = readAllRepoKbs(root);
+  assert.ok(files.some((f) => f.path === "repos/widgets/knowledge-base/00-overview/intro.md"));
+```
+
+Keep the rest of that test (`answerQuestion` → `resolveRepoFromCitation` round-trip) unchanged; the legacy `repos/widgets/…` citation shape still resolves under the widened parser, so it continues to pass.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1500,7 +1510,7 @@ Expected: PASS. Fix any call site the grep in Context turned up.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add api/_lib/answer.ts api/_lib/answer.test.ts
+git add api/_lib/answer.ts api/_lib/answer.test.ts src/kb/phase3.e2e.test.ts
 git commit -m "feat(api): answer from retrieval over a manifest, not whole-KB stuffing"
 ```
 
