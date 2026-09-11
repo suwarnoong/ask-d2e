@@ -55,7 +55,9 @@ export function loadFaq(kbRoot: string): FaqEntry[] {
   const dir = join(kbRoot, "curated", "faq");
   let names: string[];
   try {
-    names = readdirSync(dir).filter((n) => n.endsWith(".md"));
+    // Only numbered FAQ entries; the directory also holds a README with the
+    // frontmatter contract, which is not itself an entry.
+    names = readdirSync(dir).filter((n) => /^faq-\d+\.md$/.test(n));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw err;

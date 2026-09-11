@@ -70,6 +70,17 @@ test("loadFaq returns an empty array when there is no curated FAQ yet", () => {
   assert.deepEqual(loadFaq(root), []);
 });
 
+test("loadFaq ignores non-entry files such as README.md", () => {
+  const root = mkdtempSync(join(tmpdir(), "faq-readme-"));
+  const dir = join(root, "curated", "faq");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "faq-03.md"), VALID);
+  writeFileSync(join(dir, "README.md"), "# Curated FAQ\n\nFrontmatter contract documentation.\n");
+
+  const entries = loadFaq(root);
+  assert.deepEqual(entries.map((e) => e.id), ["faq-03"]);
+});
+
 test("renderFaqForPrompt emits every entry with its question, path and body", () => {
   const entries = [parseFaqFile("curated/faq/faq-03.md", VALID)];
   const rendered = renderFaqForPrompt(entries);
