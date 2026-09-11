@@ -3,6 +3,13 @@ import { join } from "node:path";
 import { git } from "./gitOps.js";
 import type { PromptSpec } from "./registry.js";
 
+export interface PromptTarget {
+  /** Repo-relative prefix every "path" in the response must start with. */
+  pathPrefix: string;
+  /** Extra instruction for material that is not install behaviour (the WebAPI contract). */
+  contractNote?: string;
+}
+
 export function listSourceFiles(sourceDir: string, cap = 500): string[] {
   const all = git(sourceDir, ["ls-files"]).split("\n").filter(Boolean);
   return all.slice(0, cap);
@@ -40,14 +47,16 @@ export function buildInitialBuildPrompt(
   fileList: string[],
   readmes: string,
   totalFileCount: number,
+  target: PromptTarget = { pathPrefix: `repos/${repoName}/knowledge-base/` },
 ): string {
   const overview = buildFileTreeOverview(fileList, fileList.length, totalFileCount);
-  const pathPrefix = `repos/${repoName}/knowledge-base/`;
+  const pathPrefix = target.pathPrefix;
+  const contractNote = target.contractNote ? `${target.contractNote}\n\n` : "";
   return `
 You maintain a Markdown knowledge base documenting ${sourceRepo}. Build the initial knowledge base
 from scratch by exploring the real source, checked out in your working directory.
 
-Audience: ${promptSpec.audience}
+${contractNote}Audience: ${promptSpec.audience}
 Example questions it should be able to answer:
 ${promptSpec.exampleQuestions.map((q) => `- ${q}`).join("\n")}
 Focus areas to prioritize:
