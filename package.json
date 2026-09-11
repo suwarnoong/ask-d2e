@@ -8,6 +8,7 @@
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
     "test": "tsx --test $(find src api scripts \\( -name '*.test.ts' -o -name '*.test.mjs' \\) 2>/dev/null)",
     "harness": "tsx scripts/slack-harness.ts",
+    "harness:events": "tsx scripts/slack-events-harness.ts",
     "kb-initial-build": "tsx src/kb/initialBuild.ts",
     "kb-correct": "tsx src/kb/correct.ts"
   },

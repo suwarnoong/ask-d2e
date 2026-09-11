@@ -31,6 +31,7 @@ settings:
     bot_events:
       - app_mention
       - message.im
+      - message.channels
   interactivity:
     is_enabled: true
     request_url: https://ask-d2e.vercel.app/api/slack-interactions

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, isAdmin } from "../src/shared/slackAuth.js";
-import { getThreadReplies, getDmHistory, getBotUserId, postMessage, stripMention } from "./_lib/slackApi.js";
+import { getThreadReplies, getDmHistory, getBotUserId, postMessage, stripMention, type Turn } from "./_lib/slackApi.js";
 import { applyWizardTurn } from "../src/admin/wizard/addRepoWizard.js";
 import { answerQuestion } from "./_lib/answer.js";
 import { buildAnswerBlocks } from "./ask.js";
@@ -19,7 +19,9 @@ export interface SlackEventPayload {
   challenge?: string;
   event?: {
     type: string;
+    subtype?: string;
     user?: string;
+    bot_id?: string;
     channel?: string;
     channel_type?: string;
     text?: string;
@@ -28,7 +30,14 @@ export interface SlackEventPayload {
   };
 }
 
-export type EventClassification = "url_verification" | "retry" | "self" | "wizard_turn" | "app_mention" | "ignored";
+export type EventClassification =
+  | "url_verification"
+  | "retry"
+  | "self"
+  | "wizard_turn"
+  | "app_mention"
+  | "thread_followup"
+  | "ignored";
 
 export function classifyEvent(payload: SlackEventPayload, botUserId: string, isRetry: boolean): EventClassification {
   if (payload.type === "url_verification") return "url_verification";
@@ -36,9 +45,21 @@ export function classifyEvent(payload: SlackEventPayload, botUserId: string, isR
 
   const event = payload.event;
   if (!event) return "ignored";
-  if (event.user === botUserId) return "self";
-  if (event.type === "message" && event.channel_type === "im") return "wizard_turn";
+  // Never react to our own messages (avoids answer→message-event→answer loops).
+  if (event.user === botUserId || event.bot_id) return "self";
   if (event.type === "app_mention") return "app_mention";
+
+  if (event.type === "message") {
+    if (event.subtype) return "ignored"; // edits, joins, deletes, etc. — not a user message
+    if (event.channel_type === "im") return "wizard_turn";
+    // An @mention also arrives as a message.* event; let the app_mention event handle it
+    // so we don't answer twice.
+    if ((event.text ?? "").includes(`<@${botUserId}>`)) return "ignored";
+    // Untagged reply inside an existing thread → candidate follow-up. processEvent confirms
+    // the bot actually participated in the thread before answering.
+    if (event.thread_ts && event.thread_ts !== event.ts) return "thread_followup";
+    return "ignored";
+  }
   return "ignored";
 }
 
@@ -122,19 +143,22 @@ async function processEvent(
       const history = isFollowUp
         ? await getThreadReplies(botToken, event.channel!, threadTs, botUserId, event.ts)
         : [];
+      await answerInThread(botToken, event.channel!, threadTs, question, history);
+      return;
+    }
 
-      await postMessage({ botToken, channel: event.channel!, text: "Looking that up...", thread_ts: threadTs });
-
-      const result = await answerQuestion(question, history);
-      const blocks = buildAnswerBlocks(question, result.text, result.covered);
-      await postMessage({ botToken, channel: event.channel!, text: result.text, blocks, thread_ts: threadTs });
-
-      // Only self-heal on a genuine miss — no answer grounded in the KB. If the answer cited
-      // a KB source (even while flagging NO_KB_MATCH, e.g. "no general X, but here's the D2E
-      // specifics"), don't post the contradictory "doesn't cover that yet" follow-up.
-      if (!result.covered && !hasKbCitation(result.text)) {
-        await maybeStartSelfHeal({ question, slackChannel: event.channel!, slackThreadTs: threadTs });
+    if (classification === "thread_followup") {
+      const threadTs = event.thread_ts!;
+      const history = await getThreadReplies(botToken, event.channel!, threadTs, botUserId, event.ts);
+      // Only engage in threads the bot actually took part in — a prior assistant turn means the
+      // bot answered here before. Otherwise this is just an unrelated threaded conversation.
+      if (!history.some((t) => t.role === "assistant")) {
+        console.log("thread_followup: bot is not a participant in this thread — ignoring");
+        return;
       }
+      const question = stripMention(event.text ?? "", botUserId);
+      await answerInThread(botToken, event.channel!, threadTs, question, history);
+      return;
     }
   } catch (err) {
     console.error("slack-events handler error:", err);
@@ -147,5 +171,27 @@ async function processEvent(
         thread_ts: event2.thread_ts ?? event2.ts,
       }).catch(() => {});
     }
+  }
+}
+
+// Shared answer flow for both @mentions and untagged thread follow-ups: ack, answer with the
+// thread's prior turns as context, post in-thread, and self-heal only on a genuine miss.
+async function answerInThread(
+  botToken: string,
+  channel: string,
+  threadTs: string,
+  question: string,
+  history: Turn[],
+): Promise<void> {
+  await postMessage({ botToken, channel, text: "Looking that up...", thread_ts: threadTs });
+
+  const result = await answerQuestion(question, history);
+  const blocks = buildAnswerBlocks(question, result.text, result.covered);
+  await postMessage({ botToken, channel, text: result.text, blocks, thread_ts: threadTs });
+
+  // Only self-heal on a genuine miss — no answer grounded in the KB. If the answer cited a KB
+  // source (even while flagging NO_KB_MATCH), don't post the contradictory follow-up.
+  if (!result.covered && !hasKbCitation(result.text)) {
+    await maybeStartSelfHeal({ question, slackChannel: channel, slackThreadTs: threadTs });
   }
 }
