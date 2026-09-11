@@ -84,14 +84,15 @@ export async function postMessage(opts: {
   text: string;
   blocks?: unknown[];
   thread_ts?: string;
-}): Promise<void> {
-  await slackApiCall("chat.postMessage", opts.botToken, {
+}): Promise<string> {
+  const data = await slackApiCall<{ ts: string }>("chat.postMessage", opts.botToken, {
     channel: opts.channel,
     text: opts.text,
     blocks: opts.blocks,
     thread_ts: opts.thread_ts,
     as_user: true,
   });
+  return data.ts;
 }
 
 export async function updateMessage(opts: {

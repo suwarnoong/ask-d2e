@@ -1,21 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickAckPhrase, buildAnswerBlocks } from "./ask.js";
-
-test("pickAckPhrase is deterministic for the same question", () => {
-  const a = pickAckPhrase("how does auth work?");
-  const b = pickAckPhrase("how does auth work?");
-  assert.equal(a, b);
-});
-
-test("pickAckPhrase can return different phrases for different questions", () => {
-  const phrases = new Set([
-    pickAckPhrase("question one"),
-    pickAckPhrase("a totally different question"),
-    pickAckPhrase("yet another one, quite unlike the others"),
-  ]);
-  assert.ok(phrases.size >= 2, "expected at least some variation across distinct questions");
-});
+import { buildAnswerBlocks } from "./answerFlow.js";
 
 test("buildAnswerBlocks caps the packed question in the button value at ~1900 chars", () => {
   const longQuestion = "q".repeat(3000);

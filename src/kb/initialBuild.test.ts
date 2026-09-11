@@ -60,7 +60,7 @@ test("runInitialBuild in dry-run mode writes nothing and makes no commits", asyn
       summary: "initial build",
       changes: [{ path: "repos/acme/knowledge-base/00-overview/intro.md", action: "create", rationale: "r", source_prs: [], content: "hello" }],
     });
-  const stubPostMessage = async () => {};
+  const stubPostMessage = async () => "1700000000.000100";
 
   await runInitialBuild(config, { callClaude: stubClaude, postMessage: stubPostMessage });
 
@@ -93,7 +93,7 @@ test("runInitialBuild (real run) applies changes, updates the registry, and comm
       changes: [{ path: "repos/acme/knowledge-base/00-overview/intro.md", action: "create", rationale: "r", source_prs: [], content: "hello" }],
     });
   let notified = false;
-  const stubPostMessage = async () => { notified = true; };
+  const stubPostMessage = async () => { notified = true; return "1700000000.000100"; };
   const stubOpenDm = async () => "D1";
 
   process.env.SLACK_BOT_TOKEN = "xoxb-test-token";
