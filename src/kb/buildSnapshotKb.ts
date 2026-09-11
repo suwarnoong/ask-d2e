@@ -39,7 +39,7 @@ export async function buildSnapshotKb(input: BuildSnapshotKbInput): Promise<Buil
   for (const repo of wanted) {
     console.log(`Generating ${repo.name} from ${repo.sourceRepo}@${input.refs[repo.name]}...`);
     const dir = join(input.workRoot, `${input.snapshotId}-${repo.name}`);
-    clone({ repo: repo.sourceRepo, ref: input.refs[repo.name], dir });
+    await clone({ repo: repo.sourceRepo, ref: input.refs[repo.name], dir });
     const plan = await generateRepoKb({
       sourceDir: dir,
       repoName: repo.name,

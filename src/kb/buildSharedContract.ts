@@ -28,7 +28,7 @@ export async function buildSharedContract(
   const clone =
     input.deps?.clone ?? ((request) => cloneAtRef(request, process.env.SOURCE_REPOS_TOKEN ?? ""));
   const dir = join(input.workRoot, "webapi-contract");
-  clone({ repo: WEBAPI_CONTRACT.sourceRepo, ref: WEBAPI_CONTRACT.ref, dir });
+  await clone({ repo: WEBAPI_CONTRACT.sourceRepo, ref: WEBAPI_CONTRACT.ref, dir });
 
   const plan = await generateRepoKb({
     sourceDir: dir,
