@@ -252,7 +252,7 @@
       .card h3 { margin: 0 0 8px; font-size: 1.06rem; font-weight: 800; letter-spacing: -0.02em; }
       .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
 
-      .ways { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+      .ways { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
       .way { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 26px; box-shadow: var(--shadow); }
       .way .lbl { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 0.98rem; letter-spacing: -0.01em; margin-bottom: 6px; }
       .way .lbl svg { width: 19px; height: 19px; color: var(--accent); }
@@ -394,7 +394,7 @@
           <div class="step reveal">
             <div class="n">01</div>
             <h3>Ask in Slack</h3>
-            <p>Fire off a question with <span class="cmd-inline">/ask</span> or an <span class="cmd-inline">@ask-d2e</span> mention.</p>
+            <p>Fire off a question with <span class="cmd-inline">/ask</span>, an <span class="cmd-inline">@ask-d2e</span> mention, or a direct message.</p>
           </div>
           <div class="step reveal">
             <div class="n">02</div>
@@ -426,13 +426,13 @@
           </div>
           <div class="card reveal">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H5.2L4 17.2V4z" /><path d="M8 9h8M8 12h5" /></svg></div>
-            <h3>Two ways to ask</h3>
-            <p>The <code>/ask</code> slash command or an <code>@ask-d2e</code> mention — whatever fits the moment.</p>
+            <h3>Three ways to ask</h3>
+            <p>A <code>/ask</code> slash command, an <code>@ask-d2e</code> mention, or a direct message — whatever fits the moment.</p>
           </div>
           <div class="card reveal">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg></div>
             <h3>Follow-up aware</h3>
-            <p>Ask a follow-up in the same thread and it remembers the conversation for coherent multi-turn answers.</p>
+            <p>Reply in the same thread — no need to tag it again — and it remembers the conversation for coherent multi-turn answers.</p>
           </div>
           <div class="card reveal">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.5" /><rect x="14" y="4" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg></div>
@@ -442,12 +442,12 @@
           <div class="card reveal">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></svg></div>
             <h3>Powered by AI</h3>
-            <p>Runs on a state-of-the-art AI model, with the knowledge base cached in context for fast, consistent replies.</p>
+            <p>Runs on a state-of-the-art AI model that retrieves just the pages relevant to your question from the knowledge base, then answers from them.</p>
           </div>
           <div class="card reveal">
             <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></svg></div>
             <h3>Self-improving base</h3>
-            <p>When it doesn't know something, it checks the real source itself before giving up — and anyone can flag a wrong answer with 👎, which an admin can approve to fix it right away. Each configured repo also refreshes itself on its own schedule as code changes.</p>
+            <p>When it doesn't know something, it checks the real source itself before giving up — and anyone can flag a wrong answer with 👎, which sends it to an admin who can trigger a knowledge-base fix in one click. Each configured repo also refreshes itself on its own schedule as code changes.</p>
           </div>
         </div>
       </div>
@@ -471,6 +471,11 @@
             <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" /></svg> Mention</div>
             <p>Pull it into a thread to keep the discussion together.</p>
             <code class="cmd"><span class="tok">@ask-d2e</span> what databases can it query?</code>
+          </div>
+          <div class="way reveal">
+            <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg> Direct message</div>
+            <p>Message the bot directly — no tag needed — for a private, one-to-one Q&amp;A.</p>
+            <code class="cmd">what databases can it query?</code>
           </div>
         </div>
       </div>
@@ -498,7 +503,7 @@
             </li>
             <li>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-              <div><b>Anyone can flag an answer, admins approve the fix.</b> <span>Everyone gets the 👍 / 👎 buttons — a 👎 from an admin fixes the base right away; from anyone else, it's logged and sent to admins to review, so knowledge-base edits stay controlled.</span></div>
+              <div><b>Anyone can flag an answer, admins approve the fix.</b> <span>Everyone gets the 👍 / 👎 buttons — a 👎 sends the question to admins, who decide whether to trigger a knowledge-base refresh, so edits stay controlled.</span></div>
             </li>
             <li>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
@@ -566,13 +571,13 @@
             q: "How does the query engine work?",
             think: "🔍 Digging through the knowledge base…",
             a: "It's a 4-stage compiler: IFR from the frontend → FAST (a semantic intermediate layer) → an optimized AST → dialect-specific SQL. Because the stages are separate, supporting a new database means writing one Stage-4 renderer instead of rewriting the translator.",
-            src: "repos/d2e-platform/03-cloud-functions/query-generation-service.md"
+            src: "snapshots/develop/generated/trex/03-cloud-functions/query-generation-service.md"
           },
           {
             q: "Which databases can D2E query?",
             think: "📚 Flipping through the docs for you…",
             a: "PostgreSQL, SAP HANA, and TrexSQL are queried directly, and Google BigQuery is supported through the TrexSQL caching layer. A unified database-access abstraction hides the dialect differences, so analytics flows stay dialect-agnostic.",
-            src: "repos/d2e-platform/01-architecture-infrastructure/database-and-configuration.md"
+            src: "snapshots/develop/docs/2-admin_guide/5-setup/database-and-configuration.md"
           }
         ];
 
