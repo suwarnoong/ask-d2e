@@ -25,11 +25,15 @@ export function loadRegistry(kbRoot: string): RegistryEntry[] {
   return JSON.parse(readFileSync(join(kbRoot, "repos.json"), "utf8"));
 }
 
+/** How long a repo's cadence says to wait between refreshes — also the fallback PR window. */
+export function cadenceWindowMs(cadence: RegistryEntry["cadence"]): number {
+  return cadence === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+}
+
 export function isDue(entry: RegistryEntry, now: Date): boolean {
   if (!entry.lastRefreshedAt) return true;
   const elapsedMs = now.getTime() - new Date(entry.lastRefreshedAt).getTime();
-  const thresholdMs = entry.cadence === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-  return elapsedMs >= thresholdMs;
+  return elapsedMs >= cadenceWindowMs(entry.cadence);
 }
 
 export const AUTO_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;

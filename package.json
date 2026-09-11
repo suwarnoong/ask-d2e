@@ -11,7 +11,8 @@
     "harness:events": "tsx scripts/slack-events-harness.ts",
     "kb-initial-build": "tsx src/kb/initialBuild.ts",
     "kb-correct": "tsx src/kb/correct.ts",
-    "kb-build-docs": "tsx src/kb/buildDocsTierCli.ts"
+    "kb-build-docs": "tsx src/kb/buildDocsTierCli.ts",
+    "kb-refresh": "tsx src/kb/refresh.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",

@@ -40,6 +40,62 @@ export function commitAndPush(
   return true;
 }
 
+export interface RepoPlan {
+  repoName: string;
+  plan: KbPlan;
+}
+
+/**
+ * One commit spanning several repos' KB folders — the scheduled refresh can touch more than one
+ * repo in a run, and a commit-per-repo would mean a push-per-repo racing against itself.
+ */
+export function commitAndPushMany(
+  kbRoot: string,
+  repoPlans: RepoPlan[],
+  branch: string,
+  subject: string,
+): boolean {
+  const pathspecs: string[] = [];
+  for (const { repoName } of repoPlans) {
+    const pathspec = `repos/${repoName}/knowledge-base`;
+    if (!existsSync(join(kbRoot, pathspec))) continue;
+    git(kbRoot, ["add", pathspec]);
+    pathspecs.push(pathspec);
+  }
+  if (pathspecs.length === 0) return false;
+  if (git(kbRoot, ["status", "--porcelain", ...pathspecs]).length === 0) return false;
+
+  const body = repoPlans
+    .flatMap(({ repoName, plan }) => [
+      `${repoName}: ${plan.summary}`,
+      ...plan.changes.map((c) => `  - ${c.action} ${c.path}: ${c.rationale}`),
+      "",
+    ])
+    .join("\n")
+    .trimEnd();
+  git(kbRoot, [
+    "-c", "user.name=ask-d2e",
+    "-c", "user.email=actions@github.com",
+    "commit", "-m", `${subject}\n\n${body}`,
+  ]);
+  pushWithRebase(kbRoot, branch);
+  return true;
+}
+
+/**
+ * Shallow-clone a source repo at runtime. The refresh job can't use a static `actions/checkout`
+ * step: which repos to clone is only known once `repos.json` and `isDue()` are evaluated.
+ */
+export function cloneSourceRepo(sourceRepo: string, token: string, destDir: string): void {
+  const url = `https://x-access-token:${token}@github.com/${sourceRepo}.git`;
+  const result = spawnSync("git", ["clone", "--depth", "1", url, destDir], { encoding: "utf8" });
+  if (result.status !== 0) {
+    // git echoes the remote URL on failure — never let the token reach the log.
+    const stderr = (result.stderr ?? "").split(token).join("***");
+    throw new Error(`git clone of ${sourceRepo} failed: ${stderr}`);
+  }
+}
+
 export function pushWithRebase(kbRoot: string, branch: string, attempts = 3): void {
   for (let attempt = 1; ; attempt++) {
     try {
